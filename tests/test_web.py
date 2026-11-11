@@ -45,6 +45,12 @@ def _post_json(client, path, payload):
     return client.post(path, json=payload)
 
 
+def test_web_index_file_exists():
+    assert (server.WEB_DIR / "index.html").is_file(), (
+        "web/index.html doit être livré avec le serveur (voir Dockerfile)"
+    )
+
+
 def test_index_serves_html(client):
     r = client.get("/")
     assert r.status_code == 200

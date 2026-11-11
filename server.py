@@ -359,7 +359,13 @@ def _web_authorized(request: Request) -> bool:
 
 @mcp.custom_route("/", methods=["GET"])
 async def web_index(request: Request) -> FileResponse:
-    return FileResponse(WEB_DIR / "index.html")
+    index = WEB_DIR / "index.html"
+    if not index.is_file():
+        return JSONResponse(
+            {"error": "web/index.html est absent du déploiement (vérifiez le Dockerfile)"},
+            status_code=500,
+        )
+    return FileResponse(index)
 
 
 @mcp.custom_route("/web/api/games", methods=["POST"])
