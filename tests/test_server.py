@@ -17,8 +17,9 @@ def _clean_state():
 
 def test_new_game_white():
     result = server.new_game("white", "easy")
-    assert result["your_color"] == "white"
-    assert result["your_turn"] is True
+    assert result["player_color"] == "white"
+    assert result["turn"] == "white"
+    assert result["agent_turn"] is True
     assert "game_id" in result
     assert "fen" in result
 
@@ -26,7 +27,8 @@ def test_new_game_white():
 def test_new_game_black_engine_plays_first():
     result = server.new_game("black", "easy")
     assert result["engine_move"] is not None
-    assert result["your_turn"] is True
+    assert result["turn"] == "black"
+    assert result["agent_turn"] is True
 
 
 def test_new_game_invalid_params():
@@ -40,16 +42,16 @@ def test_play_move_san_and_uci():
     game = server.new_game("white", "easy")
     gid = game["game_id"]
     r1 = server.play_move(gid, "e4")
-    assert r1["your_move"] == "e4"
+    assert r1["move_played"] == "e4"
     r2 = server.play_move(gid, "g1f3")
-    assert r2["your_move"] == "Nf3"
+    assert r2["move_played"] == "Nf3"
 
 
 def test_play_move_uci_format():
     game = server.new_game("white", "easy")
     gid = game["game_id"]
     r = server.play_move(gid, "d2d4")
-    assert r["your_move"] == "d4"
+    assert r["move_played"] == "d4"
 
 
 def test_play_move_illegal_rejected():
@@ -86,7 +88,8 @@ def test_get_board_and_legal_moves():
     game = server.new_game("white", "easy")
     gid = game["game_id"]
     board = server.get_board(gid)
-    assert board["your_turn"] is True
+    assert board["turn"] == "white"
+    assert board["agent_turn"] is True
     assert board["in_check"] is False
     moves = server.legal_moves(gid)["moves"]
     assert len(moves) == 20
@@ -116,7 +119,7 @@ def test_game_status():
     gid = game["game_id"]
     status = server.game_status(gid)
     assert status["over"] is False
-    assert status["your_color"] == "white"
+    assert status["player_color"] == "white"
 
 
 def test_unknown_game_rejected():

@@ -26,7 +26,8 @@ def _clean_state():
 def test_new_game_opponent_human():
     r = server.new_game("white", "easy", opponent="human")
     assert r["opponent"] == "human"
-    assert r["your_turn"] is True
+    assert r["turn"] == "white"
+    assert r["agent_turn"] is False
 
 
 def test_new_game_invalid_opponent():
@@ -39,23 +40,25 @@ def test_human_mode_no_engine_reply():
     r = server.play_move(gid, "e4", color="white")
     assert r["engine_move"] is None
     assert len(server.GAMES[gid]["board"].move_stack) == 1
-    assert r["your_turn"] is False
+    assert r["turn"] == "black"
+    assert r["agent_turn"] is True
 
 
 def test_human_mode_black_side_no_engine_first_move():
     r = server.new_game("black", "easy", opponent="human")
     assert len(server.GAMES[r["game_id"]]["board"].move_stack) == 0
-    assert r["your_turn"] is False
+    assert r["agent_color"] == "white"
+    assert r["agent_turn"] is True
 
 
 def test_play_move_with_color_param():
     gid = server.new_game("white", "easy", opponent="human")["game_id"]
     r1 = server.play_move(gid, "e4", color="white")
-    assert r1["your_move"] == "e4"
+    assert r1["move_played"] == "e4"
     r2 = server.play_move(gid, "e5", color="black")
-    assert r2["your_move"] == "e5"
+    assert r2["move_played"] == "e5"
     r3 = server.play_move(gid, "Nf3", color="white")
-    assert r3["your_move"] == "Nf3"
+    assert r3["move_played"] == "Nf3"
 
 
 def test_play_move_color_turn_mismatch():
@@ -146,15 +149,16 @@ def test_human_mode_play_move_defaults_to_opposite_color():
     # Le joueur (blancs) joue son coup, puis l'agent (noirs) répond par défaut.
     server.play_move(gid, "e4", color="white")
     r = server.play_move(gid, "e5")
-    assert r["your_move"] == "e5"
+    assert r["move_played"] == "e5"
     assert server.GAMES[gid]["board"].turn == chess.WHITE
-    assert r["your_turn"] is True
+    assert r["turn"] == "white"
+    assert r["agent_turn"] is False
 
 
 def test_human_mode_agent_never_shares_player_color():
     gid = server.new_game("black", "easy", opponent="human")["game_id"]
     r = server.play_move(gid, "e4")
-    assert r["your_move"] == "e4"
+    assert r["move_played"] == "e4"
     assert server.GAMES[gid]["player_color"] == "black"
     assert server.GAMES[gid]["board"].turn == chess.BLACK
 
@@ -162,5 +166,35 @@ def test_human_mode_agent_never_shares_player_color():
 def test_engine_mode_play_move_defaults_to_player_color():
     gid = server.new_game("white", "easy")["game_id"]
     r = server.play_move(gid, "e4")
-    assert r["your_move"] == "e4"
+    assert r["move_played"] == "e4"
     assert r["engine_move"] is not None
+
+
+def test_wait_for_turn_ready_immediately():
+    gid = server.new_game("white", "easy", opponent="human")["game_id"]
+    server.play_move(gid, "e4", color="white")
+    r = server.wait_for_turn(gid, timeout_seconds=2)
+    assert r["ready"] is True
+    assert r["turn"] == "black"
+    assert r["agent_turn"] is True
+
+
+def test_wait_for_turn_times_out():
+    gid = server.new_game("white", "easy", opponent="human")["game_id"]
+    r = server.wait_for_turn(gid, timeout_seconds=1)
+    assert r["ready"] is False
+    assert r["timed_out"] is True
+
+
+def test_wait_for_turn_game_over():
+    gid = server.new_game("white", "easy", opponent="human")["game_id"]
+    server.resign(gid)
+    r = server.wait_for_turn(gid, timeout_seconds=1)
+    assert r["ready"] is False
+    assert "game_over" in r
+
+
+def test_wait_for_turn_invalid_color():
+    gid = server.new_game("white", "easy", opponent="human")["game_id"]
+    with pytest.raises(ValueError):
+        server.wait_for_turn(gid, color="rouge")

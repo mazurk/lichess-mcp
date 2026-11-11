@@ -36,7 +36,7 @@ jobs:
           async def main():
               async with Client(server.mcp) as c:
                   tools = await c.list_tools()
-                  assert len(tools) == 11, f"attendu 11 outils, obtenu {len(tools)}"
+                  assert len(tools) == 12, f"attendu 12 outils, obtenu {len(tools)}"
                   print("Serveur MCP OK :", [t.name for t in tools])
 
           asyncio.run(main())

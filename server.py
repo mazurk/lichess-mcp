@@ -11,6 +11,7 @@ import io
 import json
 import os
 import random
+import time
 import uuid
 from pathlib import Path
 
@@ -97,6 +98,33 @@ def _get_game(game_id: str) -> dict:
     return GAMES[game_id]
 
 
+def _default_color(game: dict) -> str:
+    """Camp joué par défaut par l'appelant MCP : le joueur en mode moteur,
+    le camp opposé (celui de l'agent) en partie libre."""
+    if game["opponent"] == "engine":
+        return game["player_color"]
+    return "black" if game["player_color"] == "white" else "white"
+
+
+def _turn_info(game: dict) -> dict:
+    """Champs de trait non ambigus pour les outils MCP.
+
+    "player_color" : camp du joueur humain (créateur de la partie).
+    "agent_color" : camp de l'agent en partie libre, sinon None.
+    "turn" : camp au trait. "agent_turn" : True si c'est le tour du camp
+    joué par défaut par l'appelant MCP.
+    """
+    board = game["board"]
+    turn = "white" if board.turn == chess.WHITE else "black"
+    agent_color = _default_color(game) if game["opponent"] == "human" else None
+    return {
+        "player_color": game["player_color"],
+        "agent_color": agent_color,
+        "turn": turn,
+        "agent_turn": turn == _default_color(game),
+    }
+
+
 def _engine_reply(game: dict) -> str | None:
     board = game["board"]
     if board.is_game_over():
@@ -144,19 +172,17 @@ def new_game(color: str = "white", level: str = "medium", opponent: str = "engin
 
     result = {
         "game_id": game_id,
-        "your_color": color,
         "level": level,
         "opponent": opponent,
         "board": _board_str(game["board"]),
         "fen": game["board"].fen(),
-        "your_turn": color == "white",
     }
     if opponent == "engine" and color == "black":
         reply = _engine_reply(game)
         result["engine_move"] = reply
         result["board"] = _board_str(game["board"])
         result["fen"] = game["board"].fen()
-        result["your_turn"] = True
+    result.update(_turn_info(game))
     return result
 
 
@@ -168,11 +194,9 @@ def get_board(game_id: str) -> dict:
     return {
         "board": _board_str(board),
         "fen": board.fen(),
-        "your_turn": board.turn == (
-            chess.WHITE if game["player_color"] == "white" else chess.BLACK
-        ),
         "in_check": board.is_check(),
         "move_number": board.fullmove_number,
+        **_turn_info(game),
     }
 
 
@@ -206,9 +230,7 @@ def play_move(game_id: str, move: str, color: str | None = None) -> dict:
         raise ValueError("La partie est déjà terminée.")
 
     if color is None:
-        color = game["player_color"] if game["opponent"] == "engine" else (
-            "black" if game["player_color"] == "white" else "white"
-        )
+        color = _default_color(game)
     color = color.lower()
     if color not in ("white", "black"):
         raise ValueError("color doit valoir 'white' ou 'black'.")
@@ -225,20 +247,72 @@ def play_move(game_id: str, move: str, color: str | None = None) -> dict:
     if game["opponent"] == "engine":
         reply = _engine_reply(game)
 
-    player_white = game["player_color"] == "white"
     result = {
-        "your_move": san,
+        "move_played": san,
+        "color_played": color,
         "engine_move": reply,
         "board": _board_str(board),
         "fen": board.fen(),
-        "your_turn": (not board.is_game_over() and not game["resigned"]
-                      and board.turn == (chess.WHITE if player_white else chess.BLACK)),
         "in_check": board.is_check(),
+        **_turn_info(game),
     }
     end = _game_over_info(board, game["player_color"])
     if end:
         result["game_over"] = end
     return result
+
+
+@mcp.tool()
+def wait_for_turn(game_id: str, timeout_seconds: int = 60, color: str | None = None) -> dict:
+    """Attend (long-poll) que ce soit le tour du camp demandé, puis retourne l'état.
+
+    Permet à l'agent de jouer en temps réel sans que le joueur humain ait à
+    lui signaler ses coups : appelez cet outil juste après avoir joué (ou au
+    début du tour), il rend la main dès que le camp demandé a le trait —
+    ou au bout du timeout.
+
+    Args:
+        game_id: identifiant de la partie.
+        timeout_seconds: durée d'attente maximale (1 à 300 s, défaut 60).
+        color: camp attendu. Par défaut, le camp joué par défaut par l'appel
+            MCP (le joueur en mode moteur, l'agent en partie libre).
+    """
+    game = _get_game(game_id)
+    board = game["board"]
+    color = (color or _default_color(game)).lower()
+    if color not in ("white", "black"):
+        raise ValueError("color doit valoir 'white' ou 'black'.")
+    target = chess.WHITE if color == "white" else chess.BLACK
+    timeout_seconds = max(1, min(int(timeout_seconds), 300))
+
+    deadline = time.monotonic() + timeout_seconds
+    while True:
+        over = game["resigned"] or board.is_game_over()
+        if over:
+            return {
+                "ready": False,
+                "game_over": (
+                    "Abandon du joueur." if game["resigned"]
+                    else _game_over_info(board, game["player_color"])
+                ),
+                **_turn_info(game),
+            }
+        if board.turn == target:
+            return {
+                "ready": True,
+                "board": _board_str(board),
+                "fen": board.fen(),
+                **_turn_info(game),
+            }
+        if time.monotonic() >= deadline:
+            return {
+                "ready": False,
+                "timed_out": True,
+                "board": _board_str(board),
+                "fen": board.fen(),
+                **_turn_info(game),
+            }
+        time.sleep(0.5)
 
 
 @mcp.tool()
@@ -252,7 +326,7 @@ def undo(game_id: str) -> dict:
     return {
         "board": _board_str(board),
         "fen": board.fen(),
-        "your_turn": True,
+        **_turn_info(game),
     }
 
 
@@ -270,13 +344,13 @@ def game_status(game_id: str) -> dict:
     game = _get_game(game_id)
     board = game["board"]
     status = {
-        "your_color": game["player_color"],
         "level": game["level"],
         "opponent": game["opponent"],
         "move_number": board.fullmove_number,
         "moves_played": len(board.move_stack),
         "in_check": board.is_check(),
         "over": game["resigned"] or board.is_game_over(),
+        **_turn_info(game),
     }
     if game["resigned"]:
         status["result"] = "Abandon du joueur."
