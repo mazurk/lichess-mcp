@@ -8,16 +8,37 @@ format Lichess (FEN + coups UCI).
 from __future__ import annotations
 
 import json
+import os
 import random
 import uuid
 from pathlib import Path
 
 import chess
 from fastmcp import FastMCP
+from fastmcp.server.auth import AccessToken, TokenVerifier
 
 from engine import Engine
 
-mcp = FastMCP("lichess-mcp")
+
+class StaticTokenVerifier(TokenVerifier):
+    """Vérificateur de token statique (Authorization: Bearer <token>)."""
+
+    def __init__(self, token: str, **kwargs):
+        super().__init__(**kwargs)
+        self._token = token
+
+    async def verify_token(self, token: str) -> AccessToken | None:
+        if token == self._token:
+            return AccessToken(token=token, client_id="local-agent", scopes=[])
+        return None
+
+
+def _build_auth() -> TokenVerifier | None:
+    token = os.environ.get("LICHESS_MCP_AUTH_TOKEN", "").strip()
+    return StaticTokenVerifier(token) if token else None
+
+
+mcp = FastMCP("lichess-mcp", auth=_build_auth())
 
 GAMES: dict[str, dict] = {}
 PUZZLES: list[dict] = json.loads(
@@ -277,4 +298,14 @@ def try_puzzle_move(puzzle_id: str, move: str) -> dict:
 
 
 if __name__ == "__main__":
-    mcp.run()
+    transport = os.environ.get("LICHESS_MCP_TRANSPORT", "stdio").strip().lower()
+    if transport == "http":
+        host = os.environ.get("LICHESS_MCP_HOST", "127.0.0.1").strip()
+        port = int(os.environ.get("LICHESS_MCP_PORT", "8000").strip())
+        mcp.run(transport="http", host=host, port=port)
+    elif transport == "stdio":
+        mcp.run()
+    else:
+        raise ValueError(
+            f"LICHESS_MCP_TRANSPORT invalide : {transport!r} (valeurs : stdio, http)"
+        )

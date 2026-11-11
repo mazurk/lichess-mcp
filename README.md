@@ -41,20 +41,24 @@ pip install -r requirements.txt
 
 ## Exécution
 
-Le serveur fonctionne en **stdio** (le client MCP le lance et communique via
-l'entrée/sortie standard) :
+Le serveur fonctionne par défaut en **stdio** (le client MCP le lance et
+communique via l'entrée/sortie standard) :
 
 ```bash
 python server.py
 ```
 
-Pour l'exposer en **SSE sur HTTP** (ex. `http://127.0.0.1:8000/mcp`), utile pour
-un client qui se connecte par URL :
+Pour l'exposer en **HTTP** (ex. pour un agent cloud comme Vibe de Mistral) :
 
-```python
-# dans server.py, remplacer le bloc final par :
-mcp.run(transport="http", host="127.0.0.1", port=8000)
+```bash
+export LICHESS_MCP_TRANSPORT=http
+export LICHESS_MCP_AUTH_TOKEN=$(python -c "import secrets; print(secrets.token_urlsafe(32))")
+python server.py   # écoute sur http://127.0.0.1:8000/mcp
 ```
+
+Le déploiement complet (Docker + Caddy HTTPS + token, redirection de ports,
+connexion au Studio Mistral) est détaillé dans
+[docs/DEPLOIEMENT.md](docs/DEPLOIEMENT.md).
 
 ### Exemple de connexion (client MCP stdio)
 
