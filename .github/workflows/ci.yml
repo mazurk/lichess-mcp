@@ -13,6 +13,8 @@ jobs:
         python-version: ["3.10", "3.12"]
     steps:
       - uses: actions/checkout@v4
+      - name: Installer Stockfish
+        run: sudo apt-get update && sudo apt-get install -y stockfish
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
@@ -34,7 +36,7 @@ jobs:
           async def main():
               async with Client(server.mcp) as c:
                   tools = await c.list_tools()
-                  assert len(tools) == 9, f"attendu 9 outils, obtenu {len(tools)}"
+                  assert len(tools) == 11, f"attendu 11 outils, obtenu {len(tools)}"
                   print("Serveur MCP OK :", [t.name for t in tools])
 
           asyncio.run(main())

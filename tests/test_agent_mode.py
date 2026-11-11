@@ -1,0 +1,137 @@
+"""Tests du mode « partie libre » (adversaire humain/agent) et de l'analyse."""
+
+import shutil
+
+import chess
+import pytest
+
+import server
+
+STOCKFISH = shutil.which("stockfish") or shutil.which("/tmp/sf/stockfish")
+
+needs_stockfish = pytest.mark.skipif(
+    not STOCKFISH, reason="Stockfish non installé"
+)
+
+
+@pytest.fixture(autouse=True)
+def _clean_state():
+    server.GAMES.clear()
+    server.ACTIVE_PUZZLES.clear()
+    yield
+    server.GAMES.clear()
+    server.ACTIVE_PUZZLES.clear()
+
+
+def test_new_game_opponent_human():
+    r = server.new_game("white", "easy", opponent="human")
+    assert r["opponent"] == "human"
+    assert r["your_turn"] is True
+
+
+def test_new_game_invalid_opponent():
+    with pytest.raises(ValueError):
+        server.new_game("white", "easy", opponent="robot")
+
+
+def test_human_mode_no_engine_reply():
+    gid = server.new_game("white", "easy", opponent="human")["game_id"]
+    r = server.play_move(gid, "e4")
+    assert r["engine_move"] is None
+    assert len(server.GAMES[gid]["board"].move_stack) == 1
+    assert r["your_turn"] is False
+
+
+def test_human_mode_black_side_no_engine_first_move():
+    r = server.new_game("black", "easy", opponent="human")
+    assert len(server.GAMES[r["game_id"]]["board"].move_stack) == 0
+    assert r["your_turn"] is False
+
+
+def test_play_move_with_color_param():
+    gid = server.new_game("white", "easy", opponent="human")["game_id"]
+    r1 = server.play_move(gid, "e4", color="white")
+    assert r1["your_move"] == "e4"
+    r2 = server.play_move(gid, "e5", color="black")
+    assert r2["your_move"] == "e5"
+    r3 = server.play_move(gid, "Nf3", color="white")
+    assert r3["your_move"] == "Nf3"
+
+
+def test_play_move_color_turn_mismatch():
+    gid = server.new_game("white", "easy", opponent="human")["game_id"]
+    with pytest.raises(ValueError):
+        server.play_move(gid, "e5", color="black")
+    with pytest.raises(ValueError):
+        server.play_move(gid, "e4", color="rouge")
+
+
+def test_engine_mode_still_auto_replies():
+    gid = server.new_game("white", "easy")["game_id"]
+    r = server.play_move(gid, "e4")
+    assert r["engine_move"] is not None
+    assert len(server.GAMES[gid]["board"].move_stack) == 2
+
+
+def test_game_status_reports_opponent():
+    gid = server.new_game("white", "easy", opponent="human")["game_id"]
+    assert server.game_status(gid)["opponent"] == "human"
+
+
+@needs_stockfish
+def test_analyze_game():
+    gid = server.new_game("white", "easy", opponent="human")["game_id"]
+    for mv in ("f3", "e5", "g4", "Qh4"):
+        color = "white" if len(server.GAMES[gid]["board"].move_stack) % 2 == 0 else "black"
+        server.play_move(gid, mv, color=color)
+    r = server.analyze_game(gid, depth=10)
+    assert r["summary"]["moves"] == 4
+    assert "[%eval" in r["pgn"]
+    assert r["critical"], "le mat du berger devrait générer des coups critiques"
+
+
+@needs_stockfish
+def test_analyze_game_empty_rejected():
+    gid = server.new_game("white", "easy")["game_id"]
+    with pytest.raises(ValueError):
+        server.analyze_game(gid)
+
+
+@needs_stockfish
+def test_analyze_pgn():
+    pgn = '1. e4 e5 2. Qh5 Nc6 3. Bc4 Nf6 4. Qxf7#'
+    r = server.analyze_pgn(pgn, depth=8)
+    assert r["summary"]["moves"] == 7
+    assert "1." in r["pgn"]
+
+
+@needs_stockfish
+def test_analyze_pgn_invalid():
+    with pytest.raises(ValueError):
+        server.analyze_pgn("ceci n'est pas un pgn")
+
+
+def test_analyze_without_stockfish(monkeypatch):
+    if STOCKFISH:
+        monkeypatch.setattr("analysis.stockfish_path", lambda: None)
+    gid = server.new_game("white", "easy", opponent="human")["game_id"]
+    server.play_move(gid, "e4", color="white")
+    with pytest.raises(ValueError, match="Stockfish"):
+        server.analyze_game(gid)
+
+
+def test_web_new_game_human_opponent(client):
+    r = client.post("/web/api/games", json={"color": "white", "level": "easy", "opponent": "human"})
+    assert r.status_code == 200
+    state = r.json()
+    assert state["opponent"] == "human"
+    r = client.post(f"/web/api/games/{state['game_id']}/move", json={"move": "e2e4"})
+    assert r.status_code == 200
+    state = r.json()
+    assert len(state["moves"]) == 1
+    assert state["your_turn"] is False
+
+
+def test_web_new_game_invalid_opponent(client):
+    r = client.post("/web/api/games", json={"opponent": "robot"})
+    assert r.status_code == 400

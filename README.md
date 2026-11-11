@@ -9,8 +9,15 @@ format Lichess (FEN + coups UCI).
 
 - **Jouer contre le moteur** : trois niveaux (`easy`, `medium`, `hard`), aux
   blancs ou aux noirs. Le moteur intégré est un negamax alpha-beta ; si un
-  binaire [Stockfish](https://stockfishchess.org/) est installé sur la machine,
-  il est utilisé automatiquement.
+  binaire [Stockfish](https://stockfishchess.org/) est installé sur la machine
+  (inclus dans l'image Docker), il est utilisé automatiquement.
+- **Partie libre** (`opponent="human"`) : pas de moteur — l'autre camp est
+  joué par un humain ou par l'agent IA via `play_move(color=...)`, comme une
+  partie « amicale » entre deux joueurs sur Lichess.
+- **Analyse Stockfish** : `analyze_game` (partie du serveur) et `analyze_pgn`
+  (n'importe quel PGN) retournent un PGN annoté compatible Lichess
+  (`[%eval ...]`, blunders/erreurs/imprécisions marqués) avec le meilleur
+  coup à chaque erreur.
 - **Règles complètes** gérées par [python-chess](https://github.com/niklasf/python-chess) :
   promotion, prise en passant, roc, pat, règle des 50 coups, répétition triple.
 - **Puzzles** au format Lichess : mats en un coup à résoudre via l'agent.
@@ -23,15 +30,17 @@ format Lichess (FEN + coups UCI).
 
 | Outil | Rôle |
 |---|---|
-| `new_game(color, level)` | Démarre une partie (le moteur joue s'il a les blancs) |
+| `new_game(color, level, opponent)` | Démarre une partie : contre le moteur (`engine`) ou partie libre (`human`) |
 | `get_board(game_id)` | Échiquier ASCII, FEN, trait |
 | `legal_moves(game_id)` | Coups légaux au format SAN |
-| `play_move(game_id, move)` | Joue votre coup (SAN ou UCI), le moteur répond |
+| `play_move(game_id, move, color)` | Joue un coup (SAN ou UCI) ; le moteur répond en mode `engine` ; `color` permet à l'agent de jouer l'autre camp en mode `human` |
 | `undo(game_id)` | Annule votre coup et la réponse du moteur |
 | `resign(game_id)` | Abandonne |
 | `game_status(game_id)` | Statut de la partie |
 | `next_puzzle()` | Tire un puzzle Lichess |
 | `try_puzzle_move(puzzle_id, move)` | Propose une solution de puzzle |
+| `analyze_game(game_id, depth)` | Analyse Stockfish d'une partie du serveur → PGN annoté + coups critiques |
+| `analyze_pgn(pgn, depth)` | Analyse Stockfish d'un PGN externe (ex. exporté de lichess.org) |
 
 ## Installation
 
@@ -101,6 +110,18 @@ le remplacer par un extrait de la base officielle
 [Lichess Puzzle Database](https://database.lichess.org/#puzzles) (champ
 `Moves` : coups UCI alternés solution/réponse, le premier coup est toujours
 celui à trouver).
+
+## Analyse des parties
+
+Deux outils d'analyse (Stockfish requis : installé dans l'image Docker, ou
+`apt install stockfish`, ou chemin via `LICHESS_MCP_STOCKFISH`) :
+
+- `analyze_game(game_id, depth)` — analyse la partie demandée et retourne un
+  **PGN annoté compatible Lichess** (commentaires `[%eval ...]`, NAGs `?`,
+  `??`, meilleur coup suggéré) plus un résumé (nombre d'erreurs par camp,
+  liste des coups critiques) ;
+- `analyze_pgn(pgn, depth)` — même analyse pour un PGN importé, utile pour
+  les parties jouées sur lichess.org sans avoir à les rejouer.
 
 ## Limites
 

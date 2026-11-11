@@ -22,6 +22,9 @@
   .sq.target::before { content: ""; position: absolute; width: 16px; height: 16px;
         border-radius: 50%; background: rgba(0,0,0,.25); }
   .sq.last { box-shadow: inset 0 0 0 3px rgba(255,255,100,.7); }
+  .piece { display: block; width: 100%; text-align: center; }
+  .piece.w { color: #ffffff; -webkit-text-stroke: 1.5px #2b2b2b; text-shadow: 0 1px 3px rgba(0,0,0,.45); }
+  .piece.b { color: #171717; -webkit-text-stroke: 1px #000; text-shadow: 0 1px 2px rgba(255,255,255,.15); }
   .sq .coord { position: absolute; font-size: 10px; opacity: .6; }
   .sq .coord.f { right: 3px; bottom: 1px; } .sq .coord.r { left: 3px; top: 1px; }
   .side { width: 300px; display: flex; flex-direction: column; gap: 12px; }
@@ -53,6 +56,11 @@
       <select id="color"><option value="white">Blancs</option><option value="black">Noirs</option></select>
       <label for="level">Niveau du moteur</label>
       <select id="level"><option value="easy">Facile</option><option value="medium" selected>Moyen</option><option value="hard">Difficile</option></select>
+      <label for="opponent">Adversaire</label>
+      <select id="opponent">
+        <option value="engine" selected>Moteur (répond automatiquement)</option>
+        <option value="human">Partie libre — agent IA ou humain</option>
+      </select>
       <label for="gameId">Partie en cours (ID)</label>
       <input id="gameId" placeholder="ex. a1b2c3d4 — vide = nouvelle partie">
       <div style="display:flex; gap:8px; margin-top:12px;">
@@ -105,10 +113,11 @@ async function api(path, opts, retried) {
 async function newGame() {
   const color = document.getElementById("color").value;
   const level = document.getElementById("level").value;
+  const opponent = document.getElementById("opponent").value;
   state = await api("/web/api/games", {
     method: "POST",
     headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({color, level}),
+    body: JSON.stringify({color, level, opponent}),
   });
   document.getElementById("gameId").value = state.game_id;
   afterState();
@@ -131,7 +140,11 @@ function afterState() {
     setStatus("Partie terminée.", "ok");
     stopPolling();
   } else {
-    setStatus(state.your_turn ? "À vous de jouer." : "Le moteur réfléchit…");
+    if (!state.your_turn && state.opponent === "human") {
+      setStatus("En attente du coup adverse (agent IA ou humain)…");
+    } else {
+      setStatus(state.your_turn ? "À vous de jouer." : "Le moteur réfléchit…");
+    }
     startPolling();
   }
 }
@@ -173,7 +186,12 @@ function render() {
       if (sq === selected) div.classList.add("sel");
       if (targetsFrom.some(m => m.slice(2,4) === sq)) div.classList.add("target");
       if (state.last_move && (sq === state.last_move.slice(0,2) || sq === state.last_move.slice(2,4))) div.classList.add("last");
-      if (piece !== ".") div.textContent = pieceGlyph(piece);
+      if (piece !== ".") {
+        const span = document.createElement("span");
+        span.className = "piece " + (piece === piece.toUpperCase() ? "w" : "b");
+        span.textContent = pieceGlyph(piece);
+        div.appendChild(span);
+      }
       if (r === (state.your_color === "black" ? 8 : 1)) {
         const c = document.createElement("span"); c.className = "coord f"; c.textContent = f; div.appendChild(c);
       }

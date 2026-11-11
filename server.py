@@ -7,6 +7,7 @@ format Lichess (FEN + coups UCI).
 
 from __future__ import annotations
 
+import io
 import json
 import os
 import random
@@ -20,6 +21,7 @@ from starlette.concurrency import run_in_threadpool
 from starlette.requests import Request
 from starlette.responses import FileResponse, JSONResponse
 
+from analysis import analyze_moves, stockfish_path
 from engine import Engine
 
 
@@ -108,12 +110,16 @@ def _engine_reply(game: dict) -> str | None:
 
 
 @mcp.tool()
-def new_game(color: str = "white", level: str = "medium") -> dict:
-    """Démarre une nouvelle partie contre le moteur local.
+def new_game(color: str = "white", level: str = "medium", opponent: str = "engine") -> dict:
+    """Démarre une nouvelle partie.
 
     Args:
-        color: votre couleur, "white" ou "black" (vous jouez ce camp).
+        color: couleur du premier joueur (la vôtre), "white" ou "black".
         level: difficulté du moteur, "easy", "medium" ou "hard".
+        opponent: "engine" pour jouer contre le moteur local (il répond
+            automatiquement à chaque coup), ou "human" pour une partie libre
+            où l'autre camp est joué par un humain ou par l'agent IA via
+            play_move(color=...).
     """
     color = color.lower()
     if color not in ("white", "black"):
@@ -121,12 +127,16 @@ def new_game(color: str = "white", level: str = "medium") -> dict:
     level = level.lower()
     if level not in ("easy", "medium", "hard"):
         raise ValueError("level doit valoir 'easy', 'medium' ou 'hard'.")
+    opponent = opponent.lower()
+    if opponent not in ("engine", "human"):
+        raise ValueError("opponent doit valoir 'engine' ou 'human'.")
 
     game_id = uuid.uuid4().hex[:8]
     game = {
         "board": chess.Board(),
         "player_color": color,
         "level": level,
+        "opponent": opponent,
         "engine": Engine(level),
         "resigned": False,
     }
@@ -136,11 +146,12 @@ def new_game(color: str = "white", level: str = "medium") -> dict:
         "game_id": game_id,
         "your_color": color,
         "level": level,
+        "opponent": opponent,
         "board": _board_str(game["board"]),
         "fen": game["board"].fen(),
         "your_turn": color == "white",
     }
-    if color == "black":
+    if opponent == "engine" and color == "black":
         reply = _engine_reply(game)
         result["engine_move"] = reply
         result["board"] = _board_str(game["board"])
@@ -175,12 +186,15 @@ def legal_moves(game_id: str) -> dict:
 
 
 @mcp.tool()
-def play_move(game_id: str, move: str) -> dict:
-    """Joue votre coup (SAN ou UCI), puis le moteur répond automatiquement.
+def play_move(game_id: str, move: str, color: str | None = None) -> dict:
+    """Joue un coup (SAN ou UCI). Contre le moteur, il répond automatiquement.
 
     Args:
         game_id: identifiant de la partie.
-        move: votre coup, ex. "e4", "Nf3", "O-O", "e2e4" ou "e7e8q".
+        move: le coup, ex. "e4", "Nf3", "O-O", "e2e4" ou "e7e8q".
+        color: camp qui joue ce coup, "white" ou "black". Par défaut, la
+            couleur du joueur qui a créé la partie. En mode "human" (partie
+            libre), l'agent peut jouer l'autre camp en le précisant ici.
     """
     game = _get_game(game_id)
     board = game["board"]
@@ -188,8 +202,12 @@ def play_move(game_id: str, move: str) -> dict:
         raise ValueError("La partie est terminée (abandon).")
     if board.is_game_over():
         raise ValueError("La partie est déjà terminée.")
-    if board.turn != (chess.WHITE if game["player_color"] == "white" else chess.BLACK):
-        raise ValueError("Ce n'est pas votre tour.")
+
+    color = (color or game["player_color"]).lower()
+    if color not in ("white", "black"):
+        raise ValueError("color doit valoir 'white' ou 'black'.")
+    if board.turn != (chess.WHITE if color == "white" else chess.BLACK):
+        raise ValueError(f"Ce n'est pas le tour des {color}s.")
 
     parsed = _parse_move(board, move)
     if parsed is None or parsed not in board.legal_moves:
@@ -197,14 +215,18 @@ def play_move(game_id: str, move: str) -> dict:
 
     san = board.san(parsed)
     board.push(parsed)
-    reply = _engine_reply(game)
+    reply = None
+    if game["opponent"] == "engine":
+        reply = _engine_reply(game)
 
+    player_white = game["player_color"] == "white"
     result = {
         "your_move": san,
         "engine_move": reply,
         "board": _board_str(board),
         "fen": board.fen(),
-        "your_turn": not board.is_game_over() and not game["resigned"],
+        "your_turn": (not board.is_game_over() and not game["resigned"]
+                      and board.turn == (chess.WHITE if player_white else chess.BLACK)),
         "in_check": board.is_check(),
     }
     end = _game_over_info(board, game["player_color"])
@@ -244,6 +266,7 @@ def game_status(game_id: str) -> dict:
     status = {
         "your_color": game["player_color"],
         "level": game["level"],
+        "opponent": game["opponent"],
         "move_number": board.fullmove_number,
         "moves_played": len(board.move_stack),
         "in_check": board.is_check(),
@@ -340,6 +363,7 @@ def _web_state(game_id: str, game: dict) -> dict:
         "fen": board.fen(),
         "board": grid,
         "your_color": game["player_color"],
+        "opponent": game["opponent"],
         "your_turn": not over and board.turn == (chess.WHITE if player_white else chess.BLACK),
         "in_check": board.is_check(),
         "over": over,
@@ -375,20 +399,24 @@ async def web_new_game(request: Request) -> JSONResponse:
     body = await request.json()
     color = str(body.get("color", "white")).lower()
     level = str(body.get("level", "medium")).lower()
+    opponent = str(body.get("opponent", "engine")).lower()
     if color not in ("white", "black"):
         return JSONResponse({"error": "color doit valoir 'white' ou 'black'"}, status_code=400)
     if level not in ("easy", "medium", "hard"):
         return JSONResponse({"error": "level doit valoir 'easy', 'medium' ou 'hard'"}, status_code=400)
+    if opponent not in ("engine", "human"):
+        return JSONResponse({"error": "opponent doit valoir 'engine' ou 'human'"}, status_code=400)
     game_id = uuid.uuid4().hex[:8]
     game = {
         "board": chess.Board(),
         "player_color": color,
         "level": level,
+        "opponent": opponent,
         "engine": Engine(level),
         "resigned": False,
     }
     GAMES[game_id] = game
-    if color == "black":
+    if opponent == "engine" and color == "black":
         await run_in_threadpool(_engine_reply, game)
     return JSONResponse(_web_state(game_id, game))
 
@@ -425,9 +453,49 @@ async def web_play_move(request: Request) -> JSONResponse:
     if parsed is None or parsed not in board.legal_moves:
         return JSONResponse({"error": f"coup illégal ou invalide : {move}"}, status_code=400)
     board.push(parsed)
-    if not board.is_game_over():
+    if game["opponent"] == "engine" and not board.is_game_over():
         await run_in_threadpool(_engine_reply, game)
     return JSONResponse(_web_state(game_id, game))
+
+
+@mcp.tool()
+def analyze_game(game_id: str, depth: int = 15) -> dict:
+    """Analyse une partie terminée (ou en cours) avec Stockfish.
+
+    Retourne un PGN annoté compatible Lichess ([%eval ...], erreurs marquées)
+    et la liste des coups critiques (imprécisions, erreurs, blunders).
+
+    Args:
+        game_id: identifiant de la partie.
+        depth: profondeur d'analyse Stockfish (1 à 30, défaut 15).
+    """
+    game = _get_game(game_id)
+    moves = list(game["board"].move_stack)
+    if not moves:
+        raise ValueError("Aucun coup à analyser dans cette partie.")
+    result = analyze_moves(moves, depth)
+    result["game_id"] = game_id
+    return result
+
+
+@mcp.tool()
+def analyze_pgn(pgn: str, depth: int = 15) -> dict:
+    """Analyse une partie au format PGN avec Stockfish.
+
+    Utile pour analyser une partie jouée ailleurs (ex. exportée de lichess.org)
+    sans avoir à la rejouer coup par coup.
+
+    Args:
+        pgn: la partie au format PGN.
+        depth: profondeur d'analyse Stockfish (1 à 30, défaut 15).
+    """
+    game = chess.pgn.read_game(io.StringIO(pgn))
+    if game is None or game.errors:
+        raise ValueError("PGN invalide ou illisible.")
+    moves = list(game.mainline_moves())
+    if not moves:
+        raise ValueError("Aucun coup trouvé dans ce PGN.")
+    return analyze_moves(moves, depth)
 
 
 if __name__ == "__main__":
