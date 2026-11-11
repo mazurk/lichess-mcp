@@ -1,0 +1,6 @@
+# Remplacez chess.votre-domaine.tld par votre domaine (DDNS inclus).
+# Caddy obtient et renouvelle automatiquement un certificat Let's Encrypt.
+
+chess.votre-domaine.tld {
+	reverse_proxy lichess-mcp:8000
+}
