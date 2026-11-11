@@ -8,7 +8,7 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY server.py engine.py puzzles.json ./
+COPY server.py engine.py analysis.py puzzles.json ./
 COPY web/ ./web/
 
 EXPOSE 8000
