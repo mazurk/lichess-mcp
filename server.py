@@ -16,6 +16,9 @@ from pathlib import Path
 import chess
 from fastmcp import FastMCP
 from fastmcp.server.auth import AccessToken, TokenVerifier
+from starlette.concurrency import run_in_threadpool
+from starlette.requests import Request
+from starlette.responses import FileResponse, JSONResponse
 
 from engine import Engine
 
@@ -295,6 +298,130 @@ def try_puzzle_move(puzzle_id: str, move: str) -> dict:
         "note": f"{board.san(parsed)} n'est pas la solution. Réessayez.",
         "hint": "Cherchez un mat en un coup.",
     }
+
+
+# ---------------------------------------------------------------------------
+# Interface web : plateau interactif jouable dans le navigateur.
+# Les parties sont partagées avec les outils MCP : l'agent IA et le navigateur
+# voient (et peuvent jouer dans) les mêmes parties.
+# ---------------------------------------------------------------------------
+
+WEB_DIR = Path(__file__).parent / "web"
+
+
+def _san_history(board: chess.Board) -> list[str]:
+    replay = chess.Board()
+    history = []
+    for move in board.move_stack:
+        history.append(replay.san(move))
+        replay.push(move)
+    return history
+
+
+def _web_state(game_id: str, game: dict) -> dict:
+    board = game["board"]
+    over = game["resigned"] or board.is_game_over()
+    player_white = game["player_color"] == "white"
+    grid = [
+        [
+            (board.piece_at(chess.square(f, rank)).symbol()
+             if board.piece_at(chess.square(f, rank)) else ".")
+            for f in range(8)
+        ]
+        for rank in range(7, -1, -1)
+    ]
+    result = ""
+    if game["resigned"]:
+        result = "Abandon du joueur."
+    elif board.is_game_over():
+        result = _game_over_info(board, game["player_color"])
+    return {
+        "game_id": game_id,
+        "fen": board.fen(),
+        "board": grid,
+        "your_color": game["player_color"],
+        "your_turn": not over and board.turn == (chess.WHITE if player_white else chess.BLACK),
+        "in_check": board.is_check(),
+        "over": over,
+        "result": result,
+        "moves": _san_history(board),
+        "legal_moves_uci": [] if over else [m.uci() for m in board.legal_moves],
+        "last_move": board.peek().uci() if board.move_stack else None,
+    }
+
+
+def _web_authorized(request: Request) -> bool:
+    token = os.environ.get("LICHESS_MCP_AUTH_TOKEN", "").strip()
+    if not token:
+        return True
+    return request.headers.get("authorization", "") == f"Bearer {token}"
+
+
+@mcp.custom_route("/", methods=["GET"])
+async def web_index(request: Request) -> FileResponse:
+    return FileResponse(WEB_DIR / "index.html")
+
+
+@mcp.custom_route("/web/api/games", methods=["POST"])
+async def web_new_game(request: Request) -> JSONResponse:
+    if not _web_authorized(request):
+        return JSONResponse({"error": "non autorisé"}, status_code=401)
+    body = await request.json()
+    color = str(body.get("color", "white")).lower()
+    level = str(body.get("level", "medium")).lower()
+    if color not in ("white", "black"):
+        return JSONResponse({"error": "color doit valoir 'white' ou 'black'"}, status_code=400)
+    if level not in ("easy", "medium", "hard"):
+        return JSONResponse({"error": "level doit valoir 'easy', 'medium' ou 'hard'"}, status_code=400)
+    game_id = uuid.uuid4().hex[:8]
+    game = {
+        "board": chess.Board(),
+        "player_color": color,
+        "level": level,
+        "engine": Engine(level),
+        "resigned": False,
+    }
+    GAMES[game_id] = game
+    if color == "black":
+        await run_in_threadpool(_engine_reply, game)
+    return JSONResponse(_web_state(game_id, game))
+
+
+@mcp.custom_route("/web/api/games/{game_id}", methods=["GET"])
+async def web_get_game(request: Request) -> JSONResponse:
+    if not _web_authorized(request):
+        return JSONResponse({"error": "non autorisé"}, status_code=401)
+    game_id = request.path_params["game_id"]
+    if game_id not in GAMES:
+        return JSONResponse({"error": "partie inconnue"}, status_code=404)
+    return JSONResponse(_web_state(game_id, GAMES[game_id]))
+
+
+@mcp.custom_route("/web/api/games/{game_id}/move", methods=["POST"])
+async def web_play_move(request: Request) -> JSONResponse:
+    if not _web_authorized(request):
+        return JSONResponse({"error": "non autorisé"}, status_code=401)
+    game_id = request.path_params["game_id"]
+    if game_id not in GAMES:
+        return JSONResponse({"error": "partie inconnue"}, status_code=404)
+    game = GAMES[game_id]
+    board = game["board"]
+    if game["resigned"]:
+        return JSONResponse({"error": "la partie est terminée (abandon)"}, status_code=400)
+    if board.is_game_over():
+        return JSONResponse({"error": "la partie est déjà terminée"}, status_code=400)
+    player_white = game["player_color"] == "white"
+    if board.turn != (chess.WHITE if player_white else chess.BLACK):
+        return JSONResponse({"error": "ce n'est pas votre tour"}, status_code=400)
+    body = await request.json()
+    move = str(body.get("move", ""))
+    parsed = _parse_move(board, move)
+    if parsed is None or parsed not in board.legal_moves:
+        return JSONResponse({"error": f"coup illégal ou invalide : {move}"}, status_code=400)
+    board.push(parsed)
+    if not board.is_game_over():
+        await run_in_threadpool(_engine_reply, game)
+    return JSONResponse(_web_state(game_id, game))
 
 
 if __name__ == "__main__":

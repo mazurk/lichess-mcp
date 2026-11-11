@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>lichess-mcp — plateau local</title>
+<style>
+  :root {
+    --light: #ebecd0; --dark: #779556; --hl: #f6f669;
+    --bg: #262421; --panel: #302e2b; --text: #bababa; --accent: #8ca64c;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; display: flex; justify-content: center; background: var(--bg);
+         color: var(--text); font-family: system-ui, sans-serif; flex-wrap: wrap; }
+  .app { display: flex; gap: 24px; padding: 24px; flex-wrap: wrap; justify-content: center; }
+  .board { display: grid; grid-template-columns: repeat(8, 64px);
+           grid-template-rows: repeat(8, 64px); border: 4px solid var(--dark); user-select: none; }
+  .sq { position: relative; display: flex; align-items: center; justify-content: center;
+        font-size: 44px; line-height: 1; cursor: pointer; }
+  .sq.light { background: var(--light); } .sq.dark { background: var(--dark); }
+  .sq.sel::after { content: ""; position: absolute; inset: 0; background: var(--hl); opacity: .5; }
+  .sq.target::before { content: ""; position: absolute; width: 16px; height: 16px;
+        border-radius: 50%; background: rgba(0,0,0,.25); }
+  .sq.last { box-shadow: inset 0 0 0 3px rgba(255,255,100,.7); }
+  .sq .coord { position: absolute; font-size: 10px; opacity: .6; }
+  .sq .coord.f { right: 3px; bottom: 1px; } .sq .coord.r { left: 3px; top: 1px; }
+  .side { width: 300px; display: flex; flex-direction: column; gap: 12px; }
+  .card { background: var(--panel); border-radius: 8px; padding: 14px; }
+  h1 { font-size: 18px; margin: 0 0 4px; color: #fff; }
+  .sub { font-size: 12px; color: #888; margin: 0 0 10px; }
+  label { font-size: 12px; display: block; margin: 8px 0 2px; }
+  select, input, button { width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #4d4b47;
+        background: #262421; color: var(--text); font-size: 14px; }
+  button { background: var(--accent); border: none; color: #fff; font-weight: 600; cursor: pointer; }
+  button:hover { filter: brightness(1.1); }
+  button:disabled { background: #4d4b47; cursor: not-allowed; }
+  #status { min-height: 20px; font-size: 13px; }
+  #result { font-weight: 700; color: var(--accent); }
+  #moves { max-height: 260px; overflow-y: auto; font-size: 13px; line-height: 1.7; }
+  #moves span { display: inline-block; width: 30px; }
+  .err { color: #e07a5f; }
+  .ok { color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="board" id="board"></div>
+  <div class="side">
+    <div class="card">
+      <h1>lichess-mcp</h1>
+      <p class="sub">Plateau local — jouez contre le moteur (ou laissez l'agent IA jouer via MCP).</p>
+      <label for="color">Votre couleur</label>
+      <select id="color"><option value="white">Blancs</option><option value="black">Noirs</option></select>
+      <label for="level">Niveau du moteur</label>
+      <select id="level"><option value="easy">Facile</option><option value="medium" selected>Moyen</option><option value="hard">Difficile</option></select>
+      <label for="gameId">Partie en cours (ID)</label>
+      <input id="gameId" placeholder="ex. a1b2c3d4 — vide = nouvelle partie">
+      <div style="display:flex; gap:8px; margin-top:12px;">
+        <button id="btnNew">Nouvelle partie</button>
+        <button id="btnJoin">Rejoindre</button>
+      </div>
+      <p id="status"></p>
+      <p id="result"></p>
+    </div>
+    <div class="card">
+      <h1>Coups</h1>
+      <div id="moves"><i>Aucune partie en cours.</i></div>
+    </div>
+  </div>
+</div>
+<script>
+"use strict";
+const FILES = "abcdefgh";
+let state = null, selected = null, pollTimer = null;
+
+const statusEl = document.getElementById("status");
+const resultEl = document.getElementById("result");
+const movesEl = document.getElementById("moves");
+
+function setStatus(msg, cls) {
+  statusEl.textContent = msg || "";
+  statusEl.className = cls || "";
+}
+function setResult(msg) { resultEl.textContent = msg || ""; }
+
+let apiToken = localStorage.getItem("lichessMcpToken") || "";
+
+async function api(path, opts, retried) {
+  opts = opts || {};
+  opts.headers = Object.assign({}, opts.headers);
+  if (apiToken) opts.headers["Authorization"] = "Bearer " + apiToken;
+  const res = await fetch(path, opts);
+  if (res.status === 401 && !retried) {
+    apiToken = prompt("Token d'accès au serveur :", "") || "";
+    localStorage.setItem("lichessMcpToken", apiToken);
+    return api(path, opts, true);
+  }
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.detail || body.error || ("HTTP " + res.status));
+  }
+  return res.json();
+}
+
+async function newGame() {
+  const color = document.getElementById("color").value;
+  const level = document.getElementById("level").value;
+  state = await api("/web/api/games", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({color, level}),
+  });
+  document.getElementById("gameId").value = state.game_id;
+  afterState();
+}
+
+async function joinGame() {
+  const game_id = document.getElementById("gameId").value.trim();
+  if (!game_id) { setStatus("Entrez un ID de partie.", "err"); return; }
+  try {
+    state = await api("/web/api/games/" + encodeURIComponent(game_id), {method: "GET"});
+    afterState();
+  } catch (e) { setStatus(e.message, "err"); }
+}
+
+function afterState() {
+  selected = null;
+  render();
+  setResult(state.result || "");
+  if (state.over) {
+    setStatus("Partie terminée.", "ok");
+    stopPolling();
+  } else {
+    setStatus(state.your_turn ? "À vous de jouer." : "Le moteur réfléchit…");
+    startPolling();
+  }
+}
+
+function startPolling() {
+  stopPolling();
+  pollTimer = setInterval(refresh, 2000);
+}
+function stopPolling() { if (pollTimer) { clearInterval(pollTimer); pollTimer = null; } }
+
+async function refresh() {
+  if (!state) return;
+  try {
+    const prev = JSON.stringify(state);
+    const next = await api("/web/api/games/" + encodeURIComponent(state.game_id), {method: "GET"});
+    state = next;
+    if (JSON.stringify(state) !== prev) afterState();
+  } catch (e) { if (String(e.message).includes("404")) { stopPolling(); } }
+}
+
+function render() {
+  const boardEl = document.getElementById("board");
+  boardEl.innerHTML = "";
+  if (!state) return;
+  const rows = state.your_color === "black" ? [1,2,3,4,5,6,7,8] : [8,7,6,5,4,3,2,1];
+  const cols = state.your_color === "black" ? FILES.split("").reverse() : FILES.split("");
+  const legal = state.legal_moves_uci || [];
+  const targetsFrom = selected ? legal.filter(m => m.slice(0,2) === selected) : [];
+  state.board.forEach((row) => {
+    // board: rows 8..1 (blancs en bas par défaut) — on indexe par FEN
+  });
+  for (const r of rows) {
+    for (const f of cols) {
+      const sq = f + r;
+      const div = document.createElement("div");
+      const fileIdx = FILES.indexOf(f), rankIdx = r - 1;
+      const piece = state.board[7 - rankIdx][fileIdx];
+      div.className = "sq " + ((fileIdx + rankIdx) % 2 === 0 ? "light" : "dark");
+      if (sq === selected) div.classList.add("sel");
+      if (targetsFrom.some(m => m.slice(2,4) === sq)) div.classList.add("target");
+      if (state.last_move && (sq === state.last_move.slice(0,2) || sq === state.last_move.slice(2,4))) div.classList.add("last");
+      if (piece !== ".") div.textContent = pieceGlyph(piece);
+      if (r === (state.your_color === "black" ? 8 : 1)) {
+        const c = document.createElement("span"); c.className = "coord f"; c.textContent = f; div.appendChild(c);
+      }
+      if (f === (state.your_color === "black" ? "a" : "h")) {
+        const c = document.createElement("span"); c.className = "coord r"; c.textContent = r; div.appendChild(c);
+      }
+      div.onclick = () => onSquare(sq);
+      boardEl.appendChild(div);
+    }
+  }
+  movesEl.innerHTML = state.moves.length
+    ? state.moves.map((m, i) => (i % 2 === 0 ? "<span>" + (i/2+1) + ".</span>" : "") + m + (i % 2 === 1 ? "<br>" : " ")).join("")
+    : "<i>Aucun coup joué.</i>";
+}
+
+function pieceGlyph(p) {
+  const map = {
+    K:"♔", Q:"♕", R:"♖", B:"♗", N:"♘", P:"♙",
+    k:"♚", q:"♛", r:"♜", b:"♝", n:"♞", p:"♟",
+  };
+  return map[p] || "";
+}
+
+function onSquare(sq) {
+  if (!state || state.over || !state.your_turn) return;
+  const legal = state.legal_moves_uci || [];
+  if (selected) {
+    const candidates = legal.filter(m => m.slice(0,2) === selected && m.slice(2,4) === sq);
+    if (candidates.length) {
+      let move = candidates[0];
+      if (candidates.length > 1) {
+        const promo = prompt("Promotion : q (dame), r (tour), b (fou), n (cavalier) ?", "q");
+        move = candidates.find(m => m.length === 5 && m[4] === (promo || "q")) || move;
+      }
+      playMove(move);
+      return;
+    }
+  }
+  const hasMoves = legal.some(m => m.slice(0,2) === sq);
+  selected = hasMoves ? sq : null;
+  render();
+}
+
+async function playMove(uci) {
+  setStatus("Envoi du coup…");
+  try {
+    state = await api("/web/api/games/" + encodeURIComponent(state.game_id) + "/move", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({move: uci}),
+    });
+    afterState();
+  } catch (e) {
+    setStatus(e.message, "err");
+    selected = null;
+    render();
+  }
+}
+
+document.getElementById("btnNew").onclick = () => newGame().catch(e => setStatus(e.message, "err"));
+document.getElementById("btnJoin").onclick = joinGame;
+</script>
+</body>
+</html>
