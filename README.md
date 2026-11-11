@@ -14,6 +14,9 @@ format Lichess (FEN + coups UCI).
 - **Règles complètes** gérées par [python-chess](https://github.com/niklasf/python-chess) :
   promotion, prise en passant, roc, pat, règle des 50 coups, répétition triple.
 - **Puzzles** au format Lichess : mats en un coup à résoudre via l'agent.
+- **Interface web** : plateau interactif dans le navigateur (`http://localhost:8000/`)
+  pour jouer à la souris, partagé avec l'agent — vous pouvez jouer dans le
+  navigateur pendant que l'agent IA joue via MCP dans la même partie.
 - **Historique** : annulation d'un coup (+ réponse du moteur), abandon, statut.
 
 ## Outils MCP exposés
@@ -59,6 +62,24 @@ python server.py   # écoute sur http://127.0.0.1:8000/mcp
 Le déploiement complet (Docker + Caddy HTTPS + token, redirection de ports,
 connexion au Studio Mistral) est détaillé dans
 [docs/DEPLOIEMENT.md](docs/DEPLOIEMENT.md).
+
+### Interface web (plateau navigateur)
+
+En mode HTTP, le serveur expose aussi un plateau jouable dans le navigateur :
+
+```
+http://127.0.0.1:8000/            # page du plateau (locale)
+https://votre-domaine/              # idem derrière Caddy (déploiement public)
+```
+
+La page permet de créer/rejoindre une partie, jouer à la souris (coups légaux
+surlignés, promotion gérée), suivre les coups du moteur ou de l'agent en
+temps réel (rafraîchissement automatique), et voir l'historique des coups.
+Les parties sont **partagées avec les outils MCP** : l'agent IA peut rejoindre
+la même partie via son ID et jouer un camp pendant que vous jouez l'autre.
+
+Si un `LICHESS_MCP_AUTH_TOKEN` est configuré, l'API web l'exige aussi ; la page
+demande le token une fois et le mémorise localement.
 
 ### Exemple de connexion (client MCP stdio)
 

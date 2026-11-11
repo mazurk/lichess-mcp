@@ -49,6 +49,14 @@ Le serveur MCP est alors joignable sur :
 https://chess.votre-domaine.tld/mcp
 ```
 
+## 3 bis. Interface web (plateau navigateur)
+
+Le serveur expose aussi un plateau jouable dans le navigateur à la racine :
+`https://chess.votre-domaine.tld/`. L'API web (`/web/api/...`) exige le même
+token bearer que le MCP ; la page le demande une fois à la première requête
+et le mémorise localement. Les parties créées via le navigateur sont
+partagées avec l'agent (mêmes identifiants de partie).
+
 ## 4. Tester
 
 ```bash

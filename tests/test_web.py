@@ -1,0 +1,183 @@
+"""Tests de l'interface web (plateau navigateur) via l'app ASGI FastMCP."""
+
+import asyncio
+
+import httpx
+import pytest
+from httpx import ASGITransport
+
+import server
+
+
+@pytest.fixture(autouse=True)
+def _clean_state(monkeypatch):
+    monkeypatch.delenv("LICHESS_MCP_AUTH_TOKEN", raising=False)
+    server.GAMES.clear()
+    server.ACTIVE_PUZZLES.clear()
+    yield
+    server.GAMES.clear()
+    server.ACTIVE_PUZZLES.clear()
+
+
+@pytest.fixture
+def client():
+    app = server.mcp.http_app()
+
+    class _AsyncClient:
+        def __init__(self):
+            self._client = httpx.AsyncClient(
+                transport=ASGITransport(app=app), base_url="http://test"
+            )
+
+        def _run(self, coro):
+            return asyncio.run(coro)
+
+        def get(self, path, headers=None):
+            return self._run(self._client.get(path, headers=headers))
+
+        def post(self, path, json=None, headers=None):
+            return self._run(self._client.post(path, json=json, headers=headers))
+
+    return _AsyncClient()
+
+
+def _post_json(client, path, payload):
+    return client.post(path, json=payload)
+
+
+def test_index_serves_html(client):
+    r = client.get("/")
+    assert r.status_code == 200
+    assert "lichess-mcp" in r.text
+    assert "board" in r.text
+
+
+def test_web_new_game(client):
+    r = _post_json(client, "/web/api/games", {"color": "white", "level": "easy"})
+    assert r.status_code == 200
+    state = r.json()
+    assert state["your_color"] == "white"
+    assert state["your_turn"] is True
+    assert len(state["legal_moves_uci"]) == 20
+    assert len(state["board"]) == 8
+    assert all(len(row) == 8 for row in state["board"])
+    assert state["board"][0][4] == "k"
+    assert state["board"][7][4] == "K"
+    assert state["board"][6][4] == "P"
+
+
+def test_web_new_game_black_engine_replies(client):
+    r = _post_json(client, "/web/api/games", {"color": "black", "level": "easy"})
+    assert r.status_code == 200
+    state = r.json()
+    assert state["your_turn"] is True
+    assert len(state["moves"]) == 1
+
+
+def test_web_new_game_invalid_params(client):
+    r = _post_json(client, "/web/api/games", {"color": "rouge"})
+    assert r.status_code == 400
+    r = _post_json(client, "/web/api/games", {"level": "impossible"})
+    assert r.status_code == 400
+
+
+def test_web_get_game(client):
+    gid = server.new_game("white", "easy")["game_id"]
+    r = client.get(f"/web/api/games/{gid}")
+    assert r.status_code == 200
+    assert r.json()["game_id"] == gid
+
+
+def test_web_get_unknown_game(client):
+    r = client.get("/web/api/games/inconnu")
+    assert r.status_code == 404
+
+
+def test_web_play_move(client):
+    gid = server.new_game("white", "easy")["game_id"]
+    r = _post_json(client, f"/web/api/games/{gid}/move", {"move": "e2e4"})
+    assert r.status_code == 200
+    state = r.json()
+    assert state["moves"][0] == "e4"
+    assert len(state["moves"]) == 2
+    assert state["your_turn"] is True
+    assert state["last_move"] is not None
+
+
+def test_web_play_move_san_accepted(client):
+    gid = server.new_game("white", "easy")["game_id"]
+    r = _post_json(client, f"/web/api/games/{gid}/move", {"move": "Nf3"})
+    assert r.status_code == 200
+    assert r.json()["moves"][0] == "Nf3"
+
+
+def test_web_play_move_illegal_rejected(client):
+    gid = server.new_game("white", "easy")["game_id"]
+    r = _post_json(client, f"/web/api/games/{gid}/move", {"move": "e2e5"})
+    assert r.status_code == 400
+    r = _post_json(client, f"/web/api/games/{gid}/move", {"move": "zz9"})
+    assert r.status_code == 400
+
+
+def test_web_play_move_not_your_turn(client):
+    gid = server.new_game("white", "easy")["game_id"]
+    server.GAMES[gid]["board"].push_uci("e2e4")
+    r = _post_json(client, f"/web/api/games/{gid}/move", {"move": "d2d4"})
+    assert r.status_code == 400
+
+
+def test_web_move_on_ended_game_rejected(client):
+    gid = server.new_game("white", "easy")["game_id"]
+    server.resign(gid)
+    r = _post_json(client, f"/web/api/games/{gid}/move", {"move": "e2e4"})
+    assert r.status_code == 400
+
+
+def test_web_game_over_state(client):
+    gid = server.new_game("white", "medium")["game_id"]
+    board = server.GAMES[gid]["board"]
+    for uci in ("f2f3", "e7e5", "g2g4", "d8h4"):
+        board.push_uci(uci)
+    r = client.get(f"/web/api/games/{gid}")
+    state = r.json()
+    assert state["over"] is True
+    assert "Mat" in state["result"]
+    assert state["legal_moves_uci"] == []
+
+
+def test_web_shared_with_mcp(client):
+    gid = server.new_game("white", "easy")["game_id"]
+    r = _post_json(client, f"/web/api/games/{gid}/move", {"move": "e2e4"})
+    assert r.status_code == 200
+    mcp_state = server.get_board(gid)
+    assert mcp_state["fen"] == r.json()["fen"]
+    r2 = server.play_move(gid, "Nf3")
+    web_state = client.get(f"/web/api/games/{gid}").json()
+    assert web_state["fen"] == r2["fen"]
+
+
+def test_web_auth_required_when_token_set(client, monkeypatch):
+    monkeypatch.setenv("LICHESS_MCP_AUTH_TOKEN", "secret-token")
+    r = _post_json(client, "/web/api/games", {"color": "white"})
+    assert r.status_code == 401
+    gid = server.new_game("white", "easy")["game_id"]
+    r = client.get(f"/web/api/games/{gid}")
+    assert r.status_code == 401
+    r = _post_json(client, f"/web/api/games/{gid}/move", {"move": "e2e4"})
+    assert r.status_code == 401
+
+
+def test_web_auth_token_accepted(client, monkeypatch):
+    monkeypatch.setenv("LICHESS_MCP_AUTH_TOKEN", "secret-token")
+    auth = {"Authorization": "Bearer secret-token"}
+    r = client.post("/web/api/games", json={"color": "white", "level": "easy"}, headers=auth)
+    assert r.status_code == 200
+    gid = r.json()["game_id"]
+    r = client.get(f"/web/api/games/{gid}", headers=auth)
+    assert r.status_code == 200
+
+
+def test_web_index_served_without_auth(client, monkeypatch):
+    monkeypatch.setenv("LICHESS_MCP_AUTH_TOKEN", "secret-token")
+    r = client.get("/")
+    assert r.status_code == 200
