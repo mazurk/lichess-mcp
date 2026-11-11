@@ -36,7 +36,7 @@ def test_new_game_invalid_opponent():
 
 def test_human_mode_no_engine_reply():
     gid = server.new_game("white", "easy", opponent="human")["game_id"]
-    r = server.play_move(gid, "e4")
+    r = server.play_move(gid, "e4", color="white")
     assert r["engine_move"] is None
     assert len(server.GAMES[gid]["board"].move_stack) == 1
     assert r["your_turn"] is False
@@ -135,3 +135,32 @@ def test_web_new_game_human_opponent(client):
 def test_web_new_game_invalid_opponent(client):
     r = client.post("/web/api/games", json={"opponent": "robot"})
     assert r.status_code == 400
+
+
+def test_human_mode_play_move_defaults_to_opposite_color():
+    gid = server.new_game("white", "easy", opponent="human")["game_id"]
+    # L'agent (MCP, sans color explicite) joue le camp OPPOSÉ au joueur.
+    # Ici le joueur a les blancs : l'agent ne peut pas jouer le 1er coup.
+    with pytest.raises(ValueError, match="tour"):
+        server.play_move(gid, "e4")
+    # Le joueur (blancs) joue son coup, puis l'agent (noirs) répond par défaut.
+    server.play_move(gid, "e4", color="white")
+    r = server.play_move(gid, "e5")
+    assert r["your_move"] == "e5"
+    assert server.GAMES[gid]["board"].turn == chess.WHITE
+    assert r["your_turn"] is True
+
+
+def test_human_mode_agent_never_shares_player_color():
+    gid = server.new_game("black", "easy", opponent="human")["game_id"]
+    r = server.play_move(gid, "e4")
+    assert r["your_move"] == "e4"
+    assert server.GAMES[gid]["player_color"] == "black"
+    assert server.GAMES[gid]["board"].turn == chess.BLACK
+
+
+def test_engine_mode_play_move_defaults_to_player_color():
+    gid = server.new_game("white", "easy")["game_id"]
+    r = server.play_move(gid, "e4")
+    assert r["your_move"] == "e4"
+    assert r["engine_move"] is not None
