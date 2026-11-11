@@ -192,9 +192,11 @@ def play_move(game_id: str, move: str, color: str | None = None) -> dict:
     Args:
         game_id: identifiant de la partie.
         move: le coup, ex. "e4", "Nf3", "O-O", "e2e4" ou "e7e8q".
-        color: camp qui joue ce coup, "white" ou "black". Par défaut, la
-            couleur du joueur qui a créé la partie. En mode "human" (partie
-            libre), l'agent peut jouer l'autre camp en le précisant ici.
+        color: camp qui joue ce coup, "white" ou "black". Par défaut :
+            contre le moteur (opponent="engine"), la couleur du joueur qui a
+            créé la partie ; en partie libre (opponent="human"), la couleur
+            opposée — celle de l'agent — pour garantir que l'agent et le
+            joueur humain ne jouent jamais le même camp.
     """
     game = _get_game(game_id)
     board = game["board"]
@@ -203,7 +205,11 @@ def play_move(game_id: str, move: str, color: str | None = None) -> dict:
     if board.is_game_over():
         raise ValueError("La partie est déjà terminée.")
 
-    color = (color or game["player_color"]).lower()
+    if color is None:
+        color = game["player_color"] if game["opponent"] == "engine" else (
+            "black" if game["player_color"] == "white" else "white"
+        )
+    color = color.lower()
     if color not in ("white", "black"):
         raise ValueError("color doit valoir 'white' ou 'black'.")
     if board.turn != (chess.WHITE if color == "white" else chess.BLACK):
