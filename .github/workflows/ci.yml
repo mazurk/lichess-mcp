@@ -25,11 +25,17 @@ jobs:
         run: pytest tests/ -v
       - name: Vérifier que le serveur démarre
         run: |
-          timeout 10 python - <<'EOF'
-          import sys
+          timeout 60 python - <<'EOF'
+          import asyncio, sys
           sys.path.insert(0, ".")
+          from fastmcp import Client
           import server
-          tools = server.mcp.list_tools_sync()
-          assert len(tools) == 9, f"attendu 9 outils, obtenu {len(tools)}"
-          print("Serveur MCP OK :", [t.name for t in tools])
+
+          async def main():
+              async with Client(server.mcp) as c:
+                  tools = await c.list_tools()
+                  assert len(tools) == 9, f"attendu 9 outils, obtenu {len(tools)}"
+                  print("Serveur MCP OK :", [t.name for t in tools])
+
+          asyncio.run(main())
           EOF
