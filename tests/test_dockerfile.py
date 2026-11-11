@@ -26,3 +26,14 @@ def test_dockerfile_copies_web_dir_and_puzzles():
 
 def test_web_index_exists():
     assert (REPO / "web" / "index.html").is_file()
+
+
+def test_caddyfile_example_committed_and_local_ignored():
+    assert (REPO / "Caddyfile.example").is_file(), (
+        "Caddyfile.example (modèle versionné) doit exister"
+    )
+    gitignore = (REPO / ".gitignore").read_text(encoding="utf-8")
+    assert "Caddyfile" in gitignore, (
+        "Caddyfile (config locale personnalisée) doit être ignoré par git "
+        "pour survivre aux git pull"
+    )
