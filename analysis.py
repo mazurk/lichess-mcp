@@ -20,8 +20,25 @@ MISTAKE_THRESHOLD = 150
 INACCURACY_THRESHOLD = 60
 
 
+STOCKFISH_CANDIDATES = [
+    "/usr/games/stockfish",   # Debian/Ubuntu (hors PATH par défaut)
+    "/usr/bin/stockfish",
+    "/usr/local/bin/stockfish",
+    "/opt/homebrew/bin/stockfish",   # macOS (Homebrew)
+]
+
+
 def stockfish_path() -> str | None:
-    return os.environ.get("LICHESS_MCP_STOCKFISH") or shutil.which("stockfish")
+    env_path = os.environ.get("LICHESS_MCP_STOCKFISH", "").strip()
+    if env_path:
+        return env_path if os.path.isfile(env_path) else None
+    found = shutil.which("stockfish")
+    if found:
+        return found
+    for candidate in STOCKFISH_CANDIDATES:
+        if os.path.isfile(candidate):
+            return candidate
+    return None
 
 
 def _pov_score_cp(info: dict, mover: chess.Color) -> int:

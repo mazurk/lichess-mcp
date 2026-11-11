@@ -198,3 +198,32 @@ def test_wait_for_turn_invalid_color():
     gid = server.new_game("white", "easy", opponent="human")["game_id"]
     with pytest.raises(ValueError):
         server.wait_for_turn(gid, color="rouge")
+
+
+def test_stockfish_path_env_priority(monkeypatch, tmp_path):
+    import analysis
+    binary = tmp_path / "sf"
+    binary.write_text("#!/bin/sh\n")
+    monkeypatch.setenv("LICHESS_MCP_STOCKFISH", str(binary))
+    monkeypatch.setattr(analysis.shutil, "which", lambda _: None)
+    assert analysis.stockfish_path() == str(binary)
+
+
+def test_stockfish_path_env_missing_file(monkeypatch):
+    import analysis
+    monkeypatch.setenv("LICHESS_MCP_STOCKFISH", "/inexistant/stockfish")
+    monkeypatch.setattr(analysis.shutil, "which", lambda _: None)
+    monkeypatch.setattr(analysis.os.path, "isfile", lambda p: False)
+    assert analysis.stockfish_path() is None
+
+
+def test_stockfish_path_fallback_usrgames(monkeypatch):
+    import analysis
+    monkeypatch.delenv("LICHESS_MCP_STOCKFISH", raising=False)
+    monkeypatch.setattr(analysis.shutil, "which", lambda _: None)
+
+    def fake_isfile(p):
+        return p == "/usr/games/stockfish"
+
+    monkeypatch.setattr(analysis.os.path, "isfile", fake_isfile)
+    assert analysis.stockfish_path() == "/usr/games/stockfish"
