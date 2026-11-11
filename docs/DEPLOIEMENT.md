@@ -34,7 +34,15 @@ python -c "import secrets; print(secrets.token_urlsafe(32))"
 # Mettez-le dans .env : LICHESS_MCP_AUTH_TOKEN=...
 ```
 
-Éditez `Caddyfile` et remplacez `chess.votre-domaine.tld` par votre domaine.
+Copiez le modèle puis éditez-le avec votre domaine :
+
+```bash
+cp Caddyfile.example Caddyfile
+# remplacez chess.votre-domaine.tld par votre domaine dans Caddyfile
+```
+
+`Caddyfile` est ignoré par git : vos `git pull` ne l'écraseront jamais.
+Le modèle versionné est `Caddyfile.example`.
 
 ## 3. Lancement
 
