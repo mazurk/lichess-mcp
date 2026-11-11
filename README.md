@@ -34,6 +34,7 @@ format Lichess (FEN + coups UCI).
 | `get_board(game_id)` | Échiquier ASCII, FEN, trait |
 | `legal_moves(game_id)` | Coups légaux au format SAN |
 | `play_move(game_id, move, color)` | Joue un coup (SAN ou UCI) ; le moteur répond en mode `engine` ; `color` permet à l'agent de jouer l'autre camp en mode `human` |
+| `wait_for_turn(game_id, timeout_seconds, color)` | Long-poll : attend que ce soit le tour du camp demandé (défaut : celui de l'agent) — l'agent joue dès votre coup, sans notification manuelle |
 | `undo(game_id)` | Annule votre coup et la réponse du moteur |
 | `resign(game_id)` | Abandonne |
 | `game_status(game_id)` | Statut de la partie |
@@ -110,6 +111,19 @@ le remplacer par un extrait de la base officielle
 [Lichess Puzzle Database](https://database.lichess.org/#puzzles) (champ
 `Moves` : coups UCI alternés solution/réponse, le premier coup est toujours
 celui à trouver).
+
+## Sémantique des champs (outils MCP)
+
+Les réponses des outils MCP utilisent des champs **non ambigus** :
+
+- `turn` : camp au trait ("white"/"black") ;
+- `player_color` : camp du joueur humain (créateur de la partie) ;
+- `agent_color` : camp de l'agent en partie libre (sinon `null`) ;
+- `agent_turn` : `true` si c'est le tour du camp joué par l'appelant MCP.
+
+En mode `engine`, l'appelant MCP est le joueur : `agent_color` est `null` et
+`agent_turn` indique son trait. En mode `human`, l'appelant MCP est l'agent :
+il joue par défaut le camp opposé au joueur.
 
 ## Analyse des parties
 
