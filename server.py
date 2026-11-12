@@ -674,6 +674,17 @@ async def web_index(request: Request) -> FileResponse:
     return FileResponse(index)
 
 
+@mcp.custom_route("/util.js", methods=["GET"])
+async def web_util_js(request: Request) -> FileResponse:
+    util = WEB_DIR / "util.js"
+    if not util.is_file():
+        return JSONResponse(
+            {"error": "web/util.js est absent du déploiement (vérifiez le Dockerfile)"},
+            status_code=500,
+        )
+    return FileResponse(util, media_type="application/javascript")
+
+
 @mcp.custom_route("/web/api/games", methods=["POST"])
 async def web_new_game(request: Request) -> JSONResponse:
     if not _web_authorized(request):
