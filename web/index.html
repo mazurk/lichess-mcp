@@ -160,6 +160,9 @@ async function refresh() {
   try {
     const prev = JSON.stringify(state);
     const next = await api("/web/api/games/" + encodeURIComponent(state.game_id), {method: "GET"});
+    // Garde-fou anti-réponse-périmée : si un GET en vol au moment d'un coup
+    // revient avec moins de coups que l'état affiché, on l'ignore.
+    if (next.moves.length < state.moves.length) return;
     state = next;
     if (JSON.stringify(state) !== prev) afterState();
   } catch (e) { if (String(e.message).includes("404")) { stopPolling(); } }
@@ -238,6 +241,9 @@ function onSquare(sq) {
 
 async function playMove(uci) {
   setStatus("Envoi du coup…");
+  // Pas de poll pendant l'envoi : évite qu'un GET en vol revienne avec
+  // l'ancienne position et l'affiche par-dessus la réponse du coup.
+  stopPolling();
   try {
     state = await api("/web/api/games/" + encodeURIComponent(state.game_id) + "/move", {
       method: "POST",
@@ -249,6 +255,7 @@ async function playMove(uci) {
     setStatus(e.message, "err");
     selected = null;
     render();
+    startPolling();
   }
 }
 
