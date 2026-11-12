@@ -81,6 +81,12 @@
       <h1>Rejoindre / observer</h1>
       <label for="gameId">Identifiant de partie</label>
       <input id="gameId" placeholder="ex. a1b2c3d4">
+      <label for="joinColor">Camp souhaité</label>
+      <select id="joinColor">
+        <option value="" selected>Premier camp libre</option>
+        <option value="white">Blancs</option>
+        <option value="black">Noirs</option>
+      </select>
       <label style="display:block; margin-top:8px;">
         <input type="checkbox" id="spectate" style="width:auto;">
         Mode spectateur (regarder sans jouer)
@@ -161,8 +167,17 @@ async function joinGame() {
   if (!game_id) { setStatus("Entrez un identifiant de partie.", "err"); return; }
   spectator = document.getElementById("spectate").checked;
   try {
-    const q = spectator ? "" : "?your_color=" + document.getElementById("color").value;
-    state = await api("/web/api/games/" + encodeURIComponent(game_id) + q, {method: "GET"});
+    if (spectator) {
+      state = await api("/web/api/games/" + encodeURIComponent(game_id), {method: "GET"});
+    } else {
+      const name = document.getElementById("yourName").value.trim() || "Joueur";
+      const color = document.getElementById("joinColor").value || null;
+      state = await api("/web/api/games/" + encodeURIComponent(game_id) + "/join", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({name, color}),
+      });
+    }
     afterState();
   } catch (e) { setStatus(e.message, "err"); }
 }
@@ -279,7 +294,11 @@ async function playMove(uci) {
     state = await api("/web/api/games/" + encodeURIComponent(state.game_id) + "/move", {
       method: "POST",
       headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({move: uci, your_color: state.your_color}),
+      body: JSON.stringify({
+        move: uci,
+        your_color: state.your_color,
+        your_name: document.getElementById("yourName").value.trim() || "Joueur",
+      }),
     });
     afterState();
   } catch (e) {

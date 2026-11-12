@@ -35,7 +35,8 @@ format Lichess (FEN + coups UCI).
 
 | Outil | Rôle |
 |---|---|
-| `new_game(white, black, level, engine_color)` | Démarre une partie : noms des deux joueurs ; `engine_color` = camp du moteur (`None` = partie libre) |
+| `new_game(white, black, level, engine_color)` | Démarre une partie : noms des deux joueurs ; `engine_color` = camp du moteur (`None` = partie libre). N'attribue aucune place |
+| `join_game(game_id, player, color)` | Occupe un camp (premier arrivé, premier servi) ; le camp devient verrouillé au nom du joueur, l'autre joueur obtient l'autre camp |
 | `new_analysis_board(fen)` | Échiquier d'analyse (dry-run) : testez des coups des deux couleurs depuis un FEN |
 | `get_board(game_id)` | Échiquier ASCII, FEN, trait, noms des joueurs |
 | `legal_moves(game_id)` | Coups légaux au format SAN |
@@ -131,8 +132,15 @@ d'« agent » :
 - `kind` : "game" (partie) ou "analysis" (échiquier d'analyse).
 
 `play_move(color=...)` joue pour le camp indiqué (défaut : camp au trait) ;
-le camp du moteur est refusé. N'importe qui connaissant l'identifiant de la
-partie peut jouer un camp — deux agents, deux humains, ou un mélange.
+le camp du moteur est refusé.
+
+**Places** : `join_game(player, color)` occupe un camp — premier arrivé,
+premier servi. La création d'une partie n'attribue aucune place : le premier
+qui rejoint choisit son camp (verrouillé à son nom), le second obtient l'autre.
+Un joueur ne peut pas occuper ni jouer les deux camps. `play_move` exige alors
+`player=<nom>` correspondant à l'occupant ; un camp libre reste jouable par
+quiconque (partie ouverte), et jouer avec `player` sur un camp libre
+l'occupe.
 
 ## Analyse des parties
 
