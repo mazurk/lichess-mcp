@@ -41,7 +41,7 @@ def test_join_occupied_color_rejected():
 def test_join_same_player_both_colors_rejected():
     gid = server.new_game()["game_id"]
     server.join_game(gid, "Nicolas", color="white")
-    with pytest.raises(ValueError, match="déjà occupé par ce joueur"):
+    with pytest.raises(ValueError, match="occupe déjà le camp white"):
         server.join_game(gid, "Nicolas", color="black")
 
 
@@ -99,7 +99,7 @@ def test_play_move_with_player_claims_free_seat():
     r = server.play_move(gid, "e4", color="white", player="Nicolas")
     assert r["white_seat"] == "Nicolas"
     server.play_move(gid, "e5", color="black", player="Agent IA")
-    with pytest.raises(ValueError, match="occupé"):
+    with pytest.raises(ValueError, match="ne peut pas jouer les deux camps"):
         server.play_move(gid, "a3", color="white", player="Agent IA")
 
 
