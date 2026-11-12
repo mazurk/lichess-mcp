@@ -38,8 +38,13 @@
   button:hover { filter: brightness(1.1); }
   #status { min-height: 20px; font-size: 13px; }
   #result { font-weight: 700; color: var(--accent); }
-  #moves { max-height: 260px; overflow-y: auto; font-size: 13px; line-height: 1.7; }
-  #moves span { display: inline-block; width: 30px; }
+  #moves { max-height: 260px; overflow-y: auto; font-size: 13px; line-height: 1.8; display: grid; grid-template-columns: 34px 1fr 1fr; align-items: baseline; }
+  #moves .num { color: #888; }
+  #moves .mv-w, #moves .mv-b { padding-right: 6px; }
+  .board-wrap { display: flex; flex-direction: column; gap: 6px; }
+  .board-label { font-size: 14px; color: #ddd; padding: 0 2px; display: flex; justify-content: space-between; }
+  .board-label .seat { color: #8a8a8a; font-size: 12px; }
+  .board-label .turn-ind { color: var(--accent); font-weight: 700; }
   .err { color: #e07a5f; }
   .ok { color: var(--accent); }
   .players { font-size: 13px; margin: 6px 0; }
@@ -49,7 +54,11 @@
 </head>
 <body>
 <div class="app">
-  <div class="board" id="board"></div>
+  <div class="board-wrap">
+    <div class="board-label" id="labelTop"></div>
+    <div class="board" id="board"></div>
+    <div class="board-label" id="labelBottom"></div>
+  </div>
   <div class="side">
     <div class="card">
       <h1>lichess-mcp</h1>
@@ -78,19 +87,17 @@
       <p id="result"></p>
     </div>
     <div class="card">
-      <h1>Rejoindre / observer</h1>
+      <h1>Rejoindre une partie</h1>
       <label for="gameId">Identifiant de partie</label>
       <input id="gameId" placeholder="ex. a1b2c3d4">
-      <label for="joinColor">Camp souhaité</label>
+      <label for="joinName">Votre nom</label>
+      <input id="joinName" value="Joueur">
+      <label for="joinColor">Rejoindre comme</label>
       <select id="joinColor">
-        <option value="" selected>Premier camp libre</option>
         <option value="white">Blancs</option>
         <option value="black">Noirs</option>
+        <option value="spectate" selected>Spectateur (regarder sans jouer)</option>
       </select>
-      <label style="display:block; margin-top:8px;">
-        <input type="checkbox" id="spectate" style="width:auto;">
-        Mode spectateur (regarder sans jouer)
-      </label>
       <div style="margin-top:10px;">
         <button id="btnJoin">Rejoindre</button>
       </div>
@@ -165,18 +172,21 @@ async function newGame() {
 async function joinGame() {
   const game_id = document.getElementById("gameId").value.trim();
   if (!game_id) { setStatus("Entrez un identifiant de partie.", "err"); return; }
-  spectator = document.getElementById("spectate").checked;
+  const joinColor = document.getElementById("joinColor").value;
+  spectator = joinColor === "spectate";
+  const name = document.getElementById("joinName").value.trim() || "Joueur";
   try {
     if (spectator) {
       state = await api("/web/api/games/" + encodeURIComponent(game_id), {method: "GET"});
     } else {
-      const name = document.getElementById("yourName").value.trim() || "Joueur";
-      const color = document.getElementById("joinColor").value || null;
       state = await api("/web/api/games/" + encodeURIComponent(game_id) + "/join", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({name, color}),
+        body: JSON.stringify({name, color: joinColor}),
       });
+    }
+    if (!spectator) {
+      document.getElementById("yourName").value = name;
     }
     afterState();
   } catch (e) { setStatus(e.message, "err"); }
@@ -262,8 +272,36 @@ function render() {
     }
   }
   movesEl.innerHTML = state.moves.length
-    ? state.moves.map((m, i) => (i % 2 === 0 ? "<span>" + (i/2+1) + ".</span>" : "") + m + (i % 2 === 1 ? "<br>" : " ")).join("")
+    ? state.moves.map((m, i) => {
+        if (i % 2 === 0) {
+          const blackMove = state.moves[i + 1];
+          return '<span class="num">' + (i/2+1) + '.</span>'
+            + '<span class="mv-w">' + m + '</span>'
+            + '<span class="mv-b">' + (blackMove || "") + '</span>';
+        }
+        return "";
+      }).join("")
     : "<i>Aucun coup joué.</i>";
+  renderBoardLabels();
+}
+
+function renderBoardLabels() {
+  const top = document.getElementById("labelTop");
+  const bottom = document.getElementById("labelBottom");
+  if (!state) { top.textContent = ""; bottom.textContent = ""; return; }
+  const myWhite = state.your_color !== "black";
+  const topColor = myWhite ? "black" : "white";
+  const bottomColor = myWhite ? "white" : "black";
+  const label = (color) => {
+    const name = color === "white" ? state.white_name : state.black_name;
+    const seat = color === "white" ? state.white_seat : state.black_seat;
+    const turnMark = state.turn === color && !state.over ? ' <span class="turn-ind">•</span>' : "";
+    const seatInfo = seat ? '<span class="seat">occupé par ' + seat + '</span>'
+                          : '<span class="seat">camp libre</span>';
+    return (color === "white" ? "Blancs" : "Noirs") + " : <b>" + name + "</b>" + turnMark + " " + seatInfo;
+  };
+  top.innerHTML = label(topColor);
+  bottom.innerHTML = label(bottomColor);
 }
 
 function onSquare(sq) {
