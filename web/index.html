@@ -120,6 +120,13 @@ const resultEl = document.getElementById("result");
 const movesEl = document.getElementById("moves");
 const playersEl = document.getElementById("players");
 
+function setStatus(msg, cls) {
+  statusEl.textContent = msg || "";
+  statusEl.className = cls || "";
+}
+
+function setResult(msg) { resultEl.textContent = msg || ""; }
+
 let apiToken = localStorage.getItem("lichessMcpToken") || "";
 
 async function api(path, opts, retried) {
@@ -240,8 +247,8 @@ function render() {
   const boardEl = document.getElementById("board");
   boardEl.innerHTML = "";
   if (!state) return;
-  const myWhite = state.your_color === "white";
-  const rows = myWhite ? [1,2,3,4,5,6,7,8] : [8,7,6,5,4,3,2,1];
+  const myWhite = state.your_color !== "black";
+  const rows = myWhite ? [8,7,6,5,4,3,2,1] : [1,2,3,4,5,6,7,8];
   const cols = myWhite ? FILES.split("") : FILES.split("").reverse();
   const legal = state.legal_moves_uci || [];
   const targetsFrom = selected ? legal.filter(m => m.slice(0,2) === selected) : [];
