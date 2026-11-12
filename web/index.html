@@ -76,6 +76,7 @@
     </div>
   </div>
 </div>
+<script src="util.js"></script>
 <script>
 "use strict";
 const FILES = "abcdefgh";
@@ -160,9 +161,7 @@ async function refresh() {
   try {
     const prev = JSON.stringify(state);
     const next = await api("/web/api/games/" + encodeURIComponent(state.game_id), {method: "GET"});
-    // Garde-fou anti-réponse-périmée : si un GET en vol au moment d'un coup
-    // revient avec moins de coups que l'état affiché, on l'ignore.
-    if (next.moves.length < state.moves.length) return;
+    if (isStaleResponse(state, next)) return;
     state = next;
     if (JSON.stringify(state) !== prev) afterState();
   } catch (e) { if (String(e.message).includes("404")) { stopPolling(); } }
@@ -210,14 +209,7 @@ function render() {
     : "<i>Aucun coup joué.</i>";
 }
 
-function pieceGlyph(p) {
-  // Pièces blanches : glyphes pleins (♚…) remplis de blanc net.
-  // Pièces noires : glyphes contour (♔…) remplis de brun-noir profond,
-  // plus fins et élégants que les glyphes pleins sombres.
-  const solid = { K:"♚", Q:"♛", R:"♜", B:"♝", N:"♞", P:"♟" };
-  const outline = { k:"♔", q:"♕", r:"♖", b:"♗", n:"♘", p:"♙" };
-  return solid[p] || outline[p] || "";
-}
+// pieceGlyph et isStaleResponse sont définis dans util.js (testé par node --test).
 
 function onSquare(sq) {
   if (!state || state.over || !state.your_turn) return;

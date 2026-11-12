@@ -24,6 +24,11 @@ def test_dockerfile_copies_web_dir_and_puzzles():
     assert "puzzles.json" in dockerfile, "puzzles.json doit être copié dans l'image"
 
 
+def test_web_page_loads_util_js():
+    html = (REPO / "web" / "index.html").read_text(encoding="utf-8")
+    assert 'src="util.js"' in html, "la page doit charger util.js (logique testée)"
+
+
 def test_web_index_exists():
     assert (REPO / "web" / "index.html").is_file()
 
