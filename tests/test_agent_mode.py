@@ -1,4 +1,4 @@
-"""Tests du mode « partie libre » (adversaire humain/agent) et de l'analyse."""
+"""Tests des échiquiers d'analyse (dry-run), wait_for_turn et analyse Stockfish."""
 
 import shutil
 
@@ -23,70 +23,101 @@ def _clean_state():
     server.ACTIVE_PUZZLES.clear()
 
 
-def test_new_game_opponent_human():
-    r = server.new_game("white", "easy", opponent="human")
-    assert r["opponent"] == "human"
+# ---------------------------------------------------------------- échiquier d'analyse
+
+def test_analysis_board_default_position():
+    r = server.new_analysis_board()
+    assert r["kind"] == "analysis"
     assert r["turn"] == "white"
-    assert r["agent_turn"] is False
+    assert r["engine_color"] is None
+    assert len(server.legal_moves(r["game_id"])["moves"]) == 20
 
 
-def test_new_game_invalid_opponent():
-    with pytest.raises(ValueError):
-        server.new_game("white", "easy", opponent="robot")
-
-
-def test_human_mode_no_engine_reply():
-    gid = server.new_game("white", "easy", opponent="human")["game_id"]
-    r = server.play_move(gid, "e4", color="white")
-    assert r["engine_move"] is None
-    assert len(server.GAMES[gid]["board"].move_stack) == 1
+def test_analysis_board_from_fen():
+    fen = "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1"
+    r = server.new_analysis_board(fen)
+    assert r["fen"] == fen
     assert r["turn"] == "black"
-    assert r["agent_turn"] is True
 
 
-def test_human_mode_black_side_no_engine_first_move():
-    r = server.new_game("black", "easy", opponent="human")
-    assert len(server.GAMES[r["game_id"]]["board"].move_stack) == 0
-    assert r["agent_color"] == "white"
-    assert r["agent_turn"] is True
+def test_analysis_board_invalid_fen():
+    with pytest.raises(ValueError, match="FEN"):
+        server.new_analysis_board("ceci n'est pas un fen")
 
 
-def test_play_move_with_color_param():
-    gid = server.new_game("white", "easy", opponent="human")["game_id"]
+def test_analysis_board_play_both_sides():
+    gid = server.new_analysis_board()["game_id"]
     r1 = server.play_move(gid, "e4", color="white")
     assert r1["move_played"] == "e4"
     r2 = server.play_move(gid, "e5", color="black")
     assert r2["move_played"] == "e5"
+    assert r2["engine_move"] is None
     r3 = server.play_move(gid, "Nf3", color="white")
     assert r3["move_played"] == "Nf3"
 
 
-def test_play_move_color_turn_mismatch():
-    gid = server.new_game("white", "easy", opponent="human")["game_id"]
+def test_analysis_board_default_color_is_turn():
+    gid = server.new_analysis_board()["game_id"]
+    assert server.play_move(gid, "e4")["color_played"] == "white"
+    assert server.play_move(gid, "e5")["color_played"] == "black"
+
+
+def test_analysis_board_undo_pops_one():
+    gid = server.new_analysis_board()["game_id"]
+    server.play_move(gid, "e4", color="white")
+    server.undo(gid)
+    assert len(server.GAMES[gid]["board"].move_stack) == 0
+
+
+def test_analysis_board_get_board_and_legal_moves():
+    fen = "6k1/5r2/4Q3/8/8/8/8/4K3 b - - 0 1"
+    gid = server.new_analysis_board(fen)["game_id"]
+    board = server.get_board(gid)
+    assert board["in_check"] is False
+    moves = server.legal_moves(gid)["moves"]
+    assert moves == ["Kh8", "Kf8", "Kh7", "Kg7"]
+
+
+# ---------------------------------------------------------------- wait_for_turn
+
+def test_wait_for_turn_ready_immediately():
+    gid = server.new_game(white="A", black="B")["game_id"]
+    server.play_move(gid, "e4", color="white")
+    r = server.wait_for_turn(gid, color="black", timeout_seconds=2)
+    assert r["ready"] is True
+    assert r["turn"] == "black"
+
+
+def test_wait_for_turn_times_out():
+    gid = server.new_game(white="A", black="B")["game_id"]
+    r = server.wait_for_turn(gid, color="black", timeout_seconds=1)
+    assert r["ready"] is False
+    assert r["timed_out"] is True
+
+
+def test_wait_for_turn_game_over():
+    gid = server.new_game(white="A", black="B")["game_id"]
+    server.resign(gid, color="white")
+    r = server.wait_for_turn(gid, color="black", timeout_seconds=1)
+    assert r["ready"] is False
+    assert "game_over" in r
+
+
+def test_wait_for_turn_color_required():
+    gid = server.new_game(white="A", black="B")["game_id"]
     with pytest.raises(ValueError):
-        server.play_move(gid, "e5", color="black")
+        server.wait_for_turn(gid, color="rouge")
     with pytest.raises(ValueError):
-        server.play_move(gid, "e4", color="rouge")
+        server.wait_for_turn(gid)
 
 
-def test_engine_mode_still_auto_replies():
-    gid = server.new_game("white", "easy")["game_id"]
-    r = server.play_move(gid, "e4")
-    assert r["engine_move"] is not None
-    assert len(server.GAMES[gid]["board"].move_stack) == 2
-
-
-def test_game_status_reports_opponent():
-    gid = server.new_game("white", "easy", opponent="human")["game_id"]
-    assert server.game_status(gid)["opponent"] == "human"
-
+# ---------------------------------------------------------------- analyse Stockfish
 
 @needs_stockfish
 def test_analyze_game():
-    gid = server.new_game("white", "easy", opponent="human")["game_id"]
-    for mv in ("f3", "e5", "g4", "Qh4"):
-        color = "white" if len(server.GAMES[gid]["board"].move_stack) % 2 == 0 else "black"
-        server.play_move(gid, mv, color=color)
+    gid = server.new_game(white="A", black="B")["game_id"]
+    for uci, color in (("f2f3", "white"), ("e7e5", "black"), ("g2g4", "white"), ("d8h4", "black")):
+        server.play_move(gid, uci, color=color)
     r = server.analyze_game(gid, depth=10)
     assert r["summary"]["moves"] == 4
     assert "[%eval" in r["pgn"]
@@ -95,7 +126,7 @@ def test_analyze_game():
 
 @needs_stockfish
 def test_analyze_game_empty_rejected():
-    gid = server.new_game("white", "easy")["game_id"]
+    gid = server.new_game(white="A", black="B")["game_id"]
     with pytest.raises(ValueError):
         server.analyze_game(gid)
 
@@ -117,88 +148,13 @@ def test_analyze_pgn_invalid():
 def test_analyze_without_stockfish(monkeypatch):
     if STOCKFISH:
         monkeypatch.setattr("analysis.stockfish_path", lambda: None)
-    gid = server.new_game("white", "easy", opponent="human")["game_id"]
+    gid = server.new_game(white="A", black="B")["game_id"]
     server.play_move(gid, "e4", color="white")
     with pytest.raises(ValueError, match="Stockfish"):
         server.analyze_game(gid)
 
 
-def test_web_new_game_human_opponent(client):
-    r = client.post("/web/api/games", json={"color": "white", "level": "easy", "opponent": "human"})
-    assert r.status_code == 200
-    state = r.json()
-    assert state["opponent"] == "human"
-    r = client.post(f"/web/api/games/{state['game_id']}/move", json={"move": "e2e4"})
-    assert r.status_code == 200
-    state = r.json()
-    assert len(state["moves"]) == 1
-    assert state["your_turn"] is False
-
-
-def test_web_new_game_invalid_opponent(client):
-    r = client.post("/web/api/games", json={"opponent": "robot"})
-    assert r.status_code == 400
-
-
-def test_human_mode_play_move_defaults_to_opposite_color():
-    gid = server.new_game("white", "easy", opponent="human")["game_id"]
-    # L'agent (MCP, sans color explicite) joue le camp OPPOSÉ au joueur.
-    # Ici le joueur a les blancs : l'agent ne peut pas jouer le 1er coup.
-    with pytest.raises(ValueError, match="tour"):
-        server.play_move(gid, "e4")
-    # Le joueur (blancs) joue son coup, puis l'agent (noirs) répond par défaut.
-    server.play_move(gid, "e4", color="white")
-    r = server.play_move(gid, "e5")
-    assert r["move_played"] == "e5"
-    assert server.GAMES[gid]["board"].turn == chess.WHITE
-    assert r["turn"] == "white"
-    assert r["agent_turn"] is False
-
-
-def test_human_mode_agent_never_shares_player_color():
-    gid = server.new_game("black", "easy", opponent="human")["game_id"]
-    r = server.play_move(gid, "e4")
-    assert r["move_played"] == "e4"
-    assert server.GAMES[gid]["player_color"] == "black"
-    assert server.GAMES[gid]["board"].turn == chess.BLACK
-
-
-def test_engine_mode_play_move_defaults_to_player_color():
-    gid = server.new_game("white", "easy")["game_id"]
-    r = server.play_move(gid, "e4")
-    assert r["move_played"] == "e4"
-    assert r["engine_move"] is not None
-
-
-def test_wait_for_turn_ready_immediately():
-    gid = server.new_game("white", "easy", opponent="human")["game_id"]
-    server.play_move(gid, "e4", color="white")
-    r = server.wait_for_turn(gid, timeout_seconds=2)
-    assert r["ready"] is True
-    assert r["turn"] == "black"
-    assert r["agent_turn"] is True
-
-
-def test_wait_for_turn_times_out():
-    gid = server.new_game("white", "easy", opponent="human")["game_id"]
-    r = server.wait_for_turn(gid, timeout_seconds=1)
-    assert r["ready"] is False
-    assert r["timed_out"] is True
-
-
-def test_wait_for_turn_game_over():
-    gid = server.new_game("white", "easy", opponent="human")["game_id"]
-    server.resign(gid)
-    r = server.wait_for_turn(gid, timeout_seconds=1)
-    assert r["ready"] is False
-    assert "game_over" in r
-
-
-def test_wait_for_turn_invalid_color():
-    gid = server.new_game("white", "easy", opponent="human")["game_id"]
-    with pytest.raises(ValueError):
-        server.wait_for_turn(gid, color="rouge")
-
+# ---------------------------------------------------------------- détection Stockfish
 
 def test_stockfish_path_env_priority(monkeypatch, tmp_path):
     import analysis

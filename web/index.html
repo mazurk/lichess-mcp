@@ -36,13 +36,15 @@
         background: #262421; color: var(--text); font-size: 14px; }
   button { background: var(--accent); border: none; color: #fff; font-weight: 600; cursor: pointer; }
   button:hover { filter: brightness(1.1); }
-  button:disabled { background: #4d4b47; cursor: not-allowed; }
   #status { min-height: 20px; font-size: 13px; }
   #result { font-weight: 700; color: var(--accent); }
   #moves { max-height: 260px; overflow-y: auto; font-size: 13px; line-height: 1.7; }
   #moves span { display: inline-block; width: 30px; }
   .err { color: #e07a5f; }
   .ok { color: var(--accent); }
+  .players { font-size: 13px; margin: 6px 0; }
+  .players b { color: #fff; }
+  .spectator-note { font-size: 12px; color: #d9a441; }
 </style>
 </head>
 <body>
@@ -51,24 +53,48 @@
   <div class="side">
     <div class="card">
       <h1>lichess-mcp</h1>
-      <p class="sub">Plateau local — jouez contre le moteur (ou laissez l'agent IA jouer via MCP).</p>
+      <p class="sub">Plateau local — jouez contre le moteur, un agent IA ou un humain ; ou regardez en spectateur.</p>
+      <label for="yourName">Votre nom</label>
+      <input id="yourName" value="Joueur">
       <label for="color">Votre couleur</label>
       <select id="color"><option value="white">Blancs</option><option value="black">Noirs</option></select>
-      <label for="level">Niveau du moteur</label>
-      <select id="level"><option value="easy">Facile</option><option value="medium" selected>Moyen</option><option value="hard">Difficile</option></select>
-      <label for="opponent">Adversaire</label>
-      <select id="opponent">
+      <label for="opponentMode">Adversaire</label>
+      <select id="opponentMode">
         <option value="engine" selected>Moteur (répond automatiquement)</option>
-        <option value="human">Partie libre — agent IA ou humain</option>
+        <option value="free">Partie libre — agent IA ou humain</option>
       </select>
-      <label for="gameId">Partie en cours (ID)</label>
-      <input id="gameId" placeholder="ex. a1b2c3d4 — vide = nouvelle partie">
+      <div id="freeOnly" style="display:none;">
+        <label for="opponentName">Nom de l'adversaire</label>
+        <input id="opponentName" value="Adversaire">
+      </div>
+      <div id="engineOnly">
+        <label for="level">Niveau du moteur</label>
+        <select id="level"><option value="easy">Facile</option><option value="medium" selected>Moyen</option><option value="hard">Difficile</option></select>
+      </div>
       <div style="display:flex; gap:8px; margin-top:12px;">
         <button id="btnNew">Nouvelle partie</button>
-        <button id="btnJoin">Rejoindre</button>
       </div>
       <p id="status"></p>
       <p id="result"></p>
+    </div>
+    <div class="card">
+      <h1>Rejoindre / observer</h1>
+      <label for="gameId">Identifiant de partie</label>
+      <input id="gameId" placeholder="ex. a1b2c3d4">
+      <label for="joinColor">Camp souhaité</label>
+      <select id="joinColor">
+        <option value="" selected>Premier camp libre</option>
+        <option value="white">Blancs</option>
+        <option value="black">Noirs</option>
+      </select>
+      <label style="display:block; margin-top:8px;">
+        <input type="checkbox" id="spectate" style="width:auto;">
+        Mode spectateur (regarder sans jouer)
+      </label>
+      <div style="margin-top:10px;">
+        <button id="btnJoin">Rejoindre</button>
+      </div>
+      <p class="players" id="players"></p>
     </div>
     <div class="card">
       <h1>Coups</h1>
@@ -80,17 +106,12 @@
 <script>
 "use strict";
 const FILES = "abcdefgh";
-let state = null, selected = null, pollTimer = null;
+let state = null, selected = null, pollTimer = null, spectator = false;
 
 const statusEl = document.getElementById("status");
 const resultEl = document.getElementById("result");
 const movesEl = document.getElementById("moves");
-
-function setStatus(msg, cls) {
-  statusEl.textContent = msg || "";
-  statusEl.className = cls || "";
-}
-function setResult(msg) { resultEl.textContent = msg || ""; }
+const playersEl = document.getElementById("players");
 
 let apiToken = localStorage.getItem("lichessMcpToken") || "";
 
@@ -111,40 +132,77 @@ async function api(path, opts, retried) {
   return res.json();
 }
 
+document.getElementById("opponentMode").onchange = () => {
+  const mode = document.getElementById("opponentMode").value;
+  document.getElementById("freeOnly").style.display = mode === "free" ? "block" : "none";
+  document.getElementById("engineOnly").style.display = mode === "engine" ? "block" : "none";
+};
+
 async function newGame() {
-  const color = document.getElementById("color").value;
+  const yourName = document.getElementById("yourName").value.trim() || "Joueur";
+  const yourColor = document.getElementById("color").value;
+  const mode = document.getElementById("opponentMode").value;
   const level = document.getElementById("level").value;
-  const opponent = document.getElementById("opponent").value;
+  const payload = {
+    your_name: yourName,
+    your_color: yourColor,
+    against_engine: mode === "engine",
+    level,
+  };
+  if (mode === "free") {
+    payload.opponent_name = document.getElementById("opponentName").value.trim() || "Adversaire";
+  }
   state = await api("/web/api/games", {
     method: "POST",
     headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({color, level, opponent}),
+    body: JSON.stringify(payload),
   });
+  spectator = false;
   document.getElementById("gameId").value = state.game_id;
   afterState();
 }
 
 async function joinGame() {
   const game_id = document.getElementById("gameId").value.trim();
-  if (!game_id) { setStatus("Entrez un ID de partie.", "err"); return; }
+  if (!game_id) { setStatus("Entrez un identifiant de partie.", "err"); return; }
+  spectator = document.getElementById("spectate").checked;
   try {
-    state = await api("/web/api/games/" + encodeURIComponent(game_id), {method: "GET"});
+    if (spectator) {
+      state = await api("/web/api/games/" + encodeURIComponent(game_id), {method: "GET"});
+    } else {
+      const name = document.getElementById("yourName").value.trim() || "Joueur";
+      const color = document.getElementById("joinColor").value || null;
+      state = await api("/web/api/games/" + encodeURIComponent(game_id) + "/join", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({name, color}),
+      });
+    }
     afterState();
   } catch (e) { setStatus(e.message, "err"); }
+}
+
+function sideName(color) {
+  if (!state) return color;
+  return color === "white" ? state.white_name : state.black_name;
 }
 
 function afterState() {
   selected = null;
   render();
   setResult(state.result || "");
+  playersEl.innerHTML = state.white_name === undefined ? "" :
+    "Blancs : <b>" + state.white_name + "</b><br>Noirs : <b>" + state.black_name + "</b>";
   if (state.over) {
     setStatus("Partie terminée.", "ok");
     stopPolling();
   } else {
-    if (!state.your_turn && state.opponent === "human") {
-      setStatus("En attente du coup adverse (agent IA ou humain)…");
+    if (spectator || state.your_color === null) {
+      setStatus("Mode spectateur — au trait : " + sideName(state.turn) + " (" + state.turn + ").");
+    } else if (!state.your_turn) {
+      setStatus("Au trait : " + sideName(state.turn) + " (" + state.turn + ").");
     } else {
-      setStatus(state.your_turn ? "À vous de jouer." : "Le moteur réfléchit…");
+      setStatus("À vous de jouer (" + sideName(state.your_color) + ").");
     }
     startPolling();
   }
@@ -160,7 +218,8 @@ async function refresh() {
   if (!state) return;
   try {
     const prev = JSON.stringify(state);
-    const next = await api("/web/api/games/" + encodeURIComponent(state.game_id), {method: "GET"});
+    const q = spectator || state.your_color === null ? "" : "?your_color=" + state.your_color;
+    const next = await api("/web/api/games/" + encodeURIComponent(state.game_id) + q, {method: "GET"});
     if (isStaleResponse(state, next)) return;
     state = next;
     if (JSON.stringify(state) !== prev) afterState();
@@ -171,13 +230,11 @@ function render() {
   const boardEl = document.getElementById("board");
   boardEl.innerHTML = "";
   if (!state) return;
-  const rows = state.your_color === "black" ? [1,2,3,4,5,6,7,8] : [8,7,6,5,4,3,2,1];
-  const cols = state.your_color === "black" ? FILES.split("").reverse() : FILES.split("");
+  const myWhite = state.your_color === "white";
+  const rows = myWhite ? [1,2,3,4,5,6,7,8] : [8,7,6,5,4,3,2,1];
+  const cols = myWhite ? FILES.split("") : FILES.split("").reverse();
   const legal = state.legal_moves_uci || [];
   const targetsFrom = selected ? legal.filter(m => m.slice(0,2) === selected) : [];
-  state.board.forEach((row) => {
-    // board: rows 8..1 (blancs en bas par défaut) — on indexe par FEN
-  });
   for (const r of rows) {
     for (const f of cols) {
       const sq = f + r;
@@ -194,10 +251,10 @@ function render() {
         span.textContent = pieceGlyph(piece);
         div.appendChild(span);
       }
-      if (r === (state.your_color === "black" ? 8 : 1)) {
+      if (r === (myWhite ? 1 : 8)) {
         const c = document.createElement("span"); c.className = "coord f"; c.textContent = f; div.appendChild(c);
       }
-      if (f === (state.your_color === "black" ? "a" : "h")) {
+      if (f === (myWhite ? "h" : "a")) {
         const c = document.createElement("span"); c.className = "coord r"; c.textContent = r; div.appendChild(c);
       }
       div.onclick = () => onSquare(sq);
@@ -209,10 +266,9 @@ function render() {
     : "<i>Aucun coup joué.</i>";
 }
 
-// pieceGlyph et isStaleResponse sont définis dans util.js (testé par node --test).
-
 function onSquare(sq) {
-  if (!state || state.over || !state.your_turn) return;
+  if (!state || state.over || spectator || state.your_color === null) return;
+  if (!state.your_turn) return;
   const legal = state.legal_moves_uci || [];
   if (selected) {
     const candidates = legal.filter(m => m.slice(0,2) === selected && m.slice(2,4) === sq);
@@ -233,14 +289,16 @@ function onSquare(sq) {
 
 async function playMove(uci) {
   setStatus("Envoi du coup…");
-  // Pas de poll pendant l'envoi : évite qu'un GET en vol revienne avec
-  // l'ancienne position et l'affiche par-dessus la réponse du coup.
   stopPolling();
   try {
     state = await api("/web/api/games/" + encodeURIComponent(state.game_id) + "/move", {
       method: "POST",
       headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({move: uci}),
+      body: JSON.stringify({
+        move: uci,
+        your_color: state.your_color,
+        your_name: document.getElementById("yourName").value.trim() || "Joueur",
+      }),
     });
     afterState();
   } catch (e) {

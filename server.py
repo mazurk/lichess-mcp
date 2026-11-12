@@ -1,8 +1,10 @@
 """Serveur MCP d'échecs hors ligne, inspiré de Lichess.
 
-Aucune connexion à lichess.org : les parties se jouent en local contre un
-moteur intégré (ou Stockfish s'il est installé), et les puzzles suivent le
-format Lichess (FEN + coups UCI).
+Aucune connexion à lichess.org : les parties se jouent en local. Chaque camp
+est identifié par un nom de joueur ("Nicolas", "Agent IA", "Moteur"...).
+Le moteur local n'est qu'un joueur optionnel désigné par son camp
+(engine_color) ; une partie libre laisse les deux camps joués de l'extérieur
+(humains ou agents, quiconque connaît l'identifiant de la partie).
 """
 
 from __future__ import annotations
@@ -67,11 +69,12 @@ def _board_str(board: chess.Board) -> str:
     return "\n".join(lines)
 
 
-def _game_over_info(board: chess.Board, player_color: str) -> str:
+def _game_over_info(board: chess.Board, game: dict) -> str:
     if board.is_checkmate():
-        loser = "white" if board.turn == chess.WHITE else "black"
-        winner = "black" if loser == "white" else "white"
-        return f"Mat ! Les {winner} gagnent."
+        loser_color = "white" if board.turn == chess.WHITE else "black"
+        winner_color = "black" if loser_color == "white" else "white"
+        winner = game[f"{winner_color}_name"]
+        return f"Mat ! {winner} ({winner_color}) gagne."
     if board.is_stalemate():
         return "Pat ! Partie nulle."
     if board.is_insufficient_material():
@@ -98,30 +101,36 @@ def _get_game(game_id: str) -> dict:
     return GAMES[game_id]
 
 
-def _default_color(game: dict) -> str:
-    """Camp joué par défaut par l'appelant MCP : le joueur en mode moteur,
-    le camp opposé (celui de l'agent) en partie libre."""
-    if game["opponent"] == "engine":
-        return game["player_color"]
-    return "black" if game["player_color"] == "white" else "white"
+def _color_side(color: str) -> chess.Color:
+    return chess.WHITE if color == "white" else chess.BLACK
+
+
+def _check_color(color: str | None) -> str:
+    if color is None:
+        raise ValueError("color doit valoir 'white' ou 'black'.")
+    color = color.lower()
+    if color not in ("white", "black"):
+        raise ValueError("color doit valoir 'white' ou 'black'.")
+    return color
+
+
+def _check_level(level: str) -> str:
+    level = level.lower()
+    if level not in ("easy", "medium", "hard"):
+        raise ValueError("level doit valoir 'easy', 'medium' ou 'hard'.")
+    return level
 
 
 def _turn_info(game: dict) -> dict:
-    """Champs de trait non ambigus pour les outils MCP.
-
-    "player_color" : camp du joueur humain (créateur de la partie).
-    "agent_color" : camp de l'agent en partie libre, sinon None.
-    "turn" : camp au trait. "agent_turn" : True si c'est le tour du camp
-    joué par défaut par l'appelant MCP.
-    """
+    """Informations de trait neutres : qui joue les blancs, les noirs, le trait."""
     board = game["board"]
-    turn = "white" if board.turn == chess.WHITE else "black"
-    agent_color = _default_color(game) if game["opponent"] == "human" else None
     return {
-        "player_color": game["player_color"],
-        "agent_color": agent_color,
-        "turn": turn,
-        "agent_turn": turn == _default_color(game),
+        "white_name": game["white_name"],
+        "black_name": game["black_name"],
+        "turn": "white" if board.turn == chess.WHITE else "black",
+        "engine_color": game["engine_color"],
+        "kind": game["kind"],
+        **_seat_info(game),
     }
 
 
@@ -137,53 +146,161 @@ def _engine_reply(game: dict) -> str | None:
     return san
 
 
+def _create_game(white_name: str, black_name: str, level: str,
+                 engine_color: str | None, kind: str = "game",
+                 board: chess.Board | None = None) -> dict:
+    game = {
+        "board": board or chess.Board(),
+        "white_name": white_name,
+        "black_name": black_name,
+        "engine_color": engine_color,
+        "level": level,
+        "engine": Engine(level) if engine_color else None,
+        "resigned": False,
+        "resigned_by": None,
+        "kind": kind,
+        "white_seat": None,
+        "black_seat": None,
+    }
+    game_id = uuid.uuid4().hex[:8]
+    GAMES[game_id] = game
+    return game_id
+
+
+def _seat_info(game: dict) -> dict:
+    return {"white_seat": game["white_seat"], "black_seat": game["black_seat"]}
+
+
 @mcp.tool()
-def new_game(color: str = "white", level: str = "medium", opponent: str = "engine") -> dict:
+def new_game(white: str = "Blancs", black: str = "Noirs",
+             level: str = "medium", engine_color: str | None = None) -> dict:
     """Démarre une nouvelle partie.
 
-    Args:
-        color: couleur du premier joueur (la vôtre), "white" ou "black".
-        level: difficulté du moteur, "easy", "medium" ou "hard".
-        opponent: "engine" pour jouer contre le moteur local (il répond
-            automatiquement à chaque coup), ou "human" pour une partie libre
-            où l'autre camp est joué par un humain ou par l'agent IA via
-            play_move(color=...).
-    """
-    color = color.lower()
-    if color not in ("white", "black"):
-        raise ValueError("color doit valoir 'white' ou 'black'.")
-    level = level.lower()
-    if level not in ("easy", "medium", "hard"):
-        raise ValueError("level doit valoir 'easy', 'medium' ou 'hard'.")
-    opponent = opponent.lower()
-    if opponent not in ("engine", "human"):
-        raise ValueError("opponent doit valoir 'engine' ou 'human'.")
+    Chaque camp porte un nom de joueur (humain, agent IA, ou "Moteur").
+    Quiconque connaît l'identifiant de la partie peut jouer un camp via
+    play_move(color=...).
 
-    game_id = uuid.uuid4().hex[:8]
-    game = {
-        "board": chess.Board(),
-        "player_color": color,
-        "level": level,
-        "opponent": opponent,
-        "engine": Engine(level),
-        "resigned": False,
-    }
-    GAMES[game_id] = game
+    Args:
+        white: nom du joueur des blancs.
+        black: nom du joueur des noirs.
+        level: difficulté du moteur, "easy", "medium" ou "hard" (ignoré si le
+            moteur ne joue pas).
+        engine_color: camp joué par le moteur local, "white" ou "black" — il
+            répond alors automatiquement à chaque coup adverse. None pour une
+            partie libre : les deux camps sont joués de l'extérieur.
+    """
+    level = _check_level(level)
+    if engine_color is not None:
+        engine_color = _check_color(engine_color)
+    if engine_color == "white":
+        white = "Moteur"
+
+    game_id = _create_game(white, black, level, engine_color)
+    game = GAMES[game_id]
 
     result = {
         "game_id": game_id,
         "level": level,
-        "opponent": opponent,
         "board": _board_str(game["board"]),
         "fen": game["board"].fen(),
     }
-    if opponent == "engine" and color == "black":
+    if engine_color == "white":
         reply = _engine_reply(game)
         result["engine_move"] = reply
         result["board"] = _board_str(game["board"])
         result["fen"] = game["board"].fen()
     result.update(_turn_info(game))
     return result
+
+
+@mcp.tool()
+def new_analysis_board(fen: str | None = None) -> dict:
+    """Crée un échiquier d'analyse (dry-run) : testez des coups des deux camps.
+
+    Idéal pour explorer une position : fournissez un FEN (ou rien pour la
+    position initiale), puis jouez librement avec play_move (les deux couleurs,
+    sans moteur), annulez avec undo, consultez legal_moves/get_board, et
+    analysez avec analyze_game. Ne pollue pas les parties en cours.
+
+    Args:
+        fen: position de départ au format FEN (défaut : position initiale).
+    """
+    try:
+        board = chess.Board(fen) if fen else chess.Board()
+    except ValueError as exc:
+        raise ValueError(f"FEN invalide : {exc}")
+    game_id = _create_game("Blancs", "Noirs", "medium", None,
+                           kind="analysis", board=board)
+    game = GAMES[game_id]
+    return {
+        "game_id": game_id,
+        "board": _board_str(game["board"]),
+        "fen": game["board"].fen(),
+        **_turn_info(game),
+    }
+
+
+@mcp.tool()
+def join_game(game_id: str, player: str, color: str | None = None) -> dict:
+    """Rejoint une partie en occupant un camp (premier arrivé, premier servi).
+
+    La création d'une partie n'attribue aucune place : le premier joueur qui
+    rejoint choisit son camp, qui devient alors verrouillé à son nom ; le
+    second joueur obtient l'autre. Un même joueur ne peut pas occuper les
+    deux camps. Rejoindre à nouveau avec le même nom est idempotent.
+
+    Args:
+        game_id: identifiant de la partie.
+        player: nom du joueur qui rejoint.
+        color: camp souhaité, "white" ou "black" ; None pour le premier camp
+            libre. Refusé si le camp est déjà occupé ou joué par le moteur.
+    """
+    game = _get_game(game_id)
+    player = str(player).strip()
+    if not player:
+        raise ValueError("player doit être un nom non vide.")
+
+    for c in ("white", "black"):
+        if game[f"{c}_seat"] == player:
+            if color is not None and _check_color(color) != c:
+                raise ValueError(
+                    f"« {player} » occupe déjà le camp {c} et ne peut pas "
+                    "occuper les deux camps."
+                )
+            return {
+                "game_id": game_id,
+                "your_color": c,
+                "note": "camp déjà occupé par ce joueur",
+                "board": _board_str(game["board"]),
+                "fen": game["board"].fen(),
+                **_turn_info(game),
+            }
+
+    if color is None:
+        free = [
+            c for c in ("white", "black")
+            if game[f"{c}_seat"] is None and game["engine_color"] != c
+        ]
+        if not free:
+            raise ValueError("Partie complète : les deux camps sont occupés.")
+        color = free[0]
+    else:
+        color = _check_color(color)
+        if game["engine_color"] == color:
+            raise ValueError(f"Le camp {color} est joué par le moteur.")
+        seat = game[f"{color}_seat"]
+        if seat is not None:
+            raise ValueError(f"Le camp {color} est déjà occupé par « {seat} ».")
+
+    game[f"{color}_seat"] = player
+    game[f"{color}_name"] = player
+    return {
+        "game_id": game_id,
+        "your_color": color,
+        "board": _board_str(game["board"]),
+        "fen": game["board"].fen(),
+        **_turn_info(game),
+    }
 
 
 @mcp.tool()
@@ -210,17 +327,19 @@ def legal_moves(game_id: str) -> dict:
 
 
 @mcp.tool()
-def play_move(game_id: str, move: str, color: str | None = None) -> dict:
-    """Joue un coup (SAN ou UCI). Contre le moteur, il répond automatiquement.
+def play_move(game_id: str, move: str, color: str | None = None,
+              player: str | None = None) -> dict:
+    """Joue un coup (SAN ou UCI) pour le camp indiqué.
 
     Args:
-        game_id: identifiant de la partie.
+        game_id: identifiant de la partie (ou de l'échiquier d'analyse).
         move: le coup, ex. "e4", "Nf3", "O-O", "e2e4" ou "e7e8q".
-        color: camp qui joue ce coup, "white" ou "black". Par défaut :
-            contre le moteur (opponent="engine"), la couleur du joueur qui a
-            créé la partie ; en partie libre (opponent="human"), la couleur
-            opposée — celle de l'agent — pour garantir que l'agent et le
-            joueur humain ne jouent jamais le même camp.
+        color: camp qui joue, "white" ou "black". Par défaut, le camp au trait.
+            Refusé si c'est le camp joué par le moteur (il joue lui-même).
+        player: nom du joueur. Si le camp est occupé (join_game), ce nom doit
+            correspondre à l'occupant ; si le camp est libre, le passer
+            revient à l'occuper. Sans player, un camp libre reste jouable par
+            quiconque (partie ouverte).
     """
     game = _get_game(game_id)
     board = game["board"]
@@ -230,12 +349,35 @@ def play_move(game_id: str, move: str, color: str | None = None) -> dict:
         raise ValueError("La partie est déjà terminée.")
 
     if color is None:
-        color = _default_color(game)
-    color = color.lower()
-    if color not in ("white", "black"):
-        raise ValueError("color doit valoir 'white' ou 'black'.")
-    if board.turn != (chess.WHITE if color == "white" else chess.BLACK):
+        color = "white" if board.turn == chess.WHITE else "black"
+    color = _check_color(color)
+    if game["engine_color"] == color:
+        raise ValueError(f"Le camp {color} est joué par le moteur.")
+    if board.turn != _color_side(color):
         raise ValueError(f"Ce n'est pas le tour des {color}s.")
+
+    seat = game[f"{color}_seat"]
+    other = "black" if color == "white" else "white"
+    if player is not None:
+        player = str(player).strip()
+        if game[f"{other}_seat"] == player:
+            raise ValueError(
+                f"« {player} » occupe déjà le camp {other} et ne peut pas "
+                "jouer les deux camps."
+            )
+        if seat is not None and player != seat:
+            raise ValueError(
+                f"Le camp {color} est occupé par « {seat} » — rejoignez "
+                "l'autre camp avec join_game."
+            )
+        if seat is None and player:
+            game[f"{color}_seat"] = player
+            game[f"{color}_name"] = player
+    elif seat is not None:
+        raise ValueError(
+            f"Le camp {color} est occupé par « {seat} » — identifiez-vous "
+            f"avec player=\"{seat}\" ou rejoignez l'autre camp."
+        )
 
     parsed = _parse_move(board, move)
     if parsed is None or parsed not in board.legal_moves:
@@ -244,7 +386,7 @@ def play_move(game_id: str, move: str, color: str | None = None) -> dict:
     san = board.san(parsed)
     board.push(parsed)
     reply = None
-    if game["opponent"] == "engine":
+    if game["engine_color"] and not board.is_game_over():
         reply = _engine_reply(game)
 
     result = {
@@ -256,45 +398,42 @@ def play_move(game_id: str, move: str, color: str | None = None) -> dict:
         "in_check": board.is_check(),
         **_turn_info(game),
     }
-    end = _game_over_info(board, game["player_color"])
+    end = _game_over_info(board, game)
     if end:
         result["game_over"] = end
     return result
 
 
 @mcp.tool()
-def wait_for_turn(game_id: str, timeout_seconds: int = 60, color: str | None = None) -> dict:
+def wait_for_turn(game_id: str, color: str | None = None, timeout_seconds: int = 60) -> dict:
     """Attend (long-poll) que ce soit le tour du camp demandé, puis retourne l'état.
 
-    Permet à l'agent de jouer en temps réel sans que le joueur humain ait à
-    lui signaler ses coups : appelez cet outil juste après avoir joué (ou au
-    début du tour), il rend la main dès que le camp demandé a le trait —
-    ou au bout du timeout.
+    Permet de jouer en temps réel sans signaler ses coups par ailleurs :
+    l'appel rend la main dès que le camp demandé a le trait — ou au timeout.
 
     Args:
         game_id: identifiant de la partie.
+        color: camp attendu, "white" ou "black".
         timeout_seconds: durée d'attente maximale (1 à 300 s, défaut 60).
-        color: camp attendu. Par défaut, le camp joué par défaut par l'appel
-            MCP (le joueur en mode moteur, l'agent en partie libre).
     """
     game = _get_game(game_id)
     board = game["board"]
-    color = (color or _default_color(game)).lower()
-    if color not in ("white", "black"):
-        raise ValueError("color doit valoir 'white' ou 'black'.")
-    target = chess.WHITE if color == "white" else chess.BLACK
+    color = _check_color(color)
+    target = _color_side(color)
     timeout_seconds = max(1, min(int(timeout_seconds), 300))
 
     deadline = time.monotonic() + timeout_seconds
     while True:
         over = game["resigned"] or board.is_game_over()
         if over:
+            if game["resigned"]:
+                who = game[f"{game['resigned_by']}_name"]
+                end = f"{who} ({game['resigned_by']}) a abandonné."
+            else:
+                end = _game_over_info(board, game)
             return {
                 "ready": False,
-                "game_over": (
-                    "Abandon du joueur." if game["resigned"]
-                    else _game_over_info(board, game["player_color"])
-                ),
+                "game_over": end,
                 **_turn_info(game),
             }
         if board.turn == target:
@@ -317,10 +456,10 @@ def wait_for_turn(game_id: str, timeout_seconds: int = 60, color: str | None = N
 
 @mcp.tool()
 def undo(game_id: str) -> dict:
-    """Annule votre dernier coup et la réponse du moteur."""
+    """Annule le dernier coup (et la réponse du moteur s'il vient de jouer)."""
     game = _get_game(game_id)
     board = game["board"]
-    for _ in range(2):
+    for _ in range(2 if game["engine_color"] else 1):
         if board.move_stack:
             board.pop()
     return {
@@ -331,21 +470,31 @@ def undo(game_id: str) -> dict:
 
 
 @mcp.tool()
-def resign(game_id: str) -> dict:
-    """Abandonne la partie."""
+def resign(game_id: str, color: str | None = None) -> dict:
+    """Abandonne la partie pour le camp indiqué.
+
+    Args:
+        game_id: identifiant de la partie.
+        color: camp qui abandonne, "white" ou "black" (défaut : camp au trait).
+    """
     game = _get_game(game_id)
+    board = game["board"]
+    if color is None:
+        color = "white" if board.turn == chess.WHITE else "black"
+    color = _check_color(color)
     game["resigned"] = True
-    return {"game_over": "Vous avez abandonné. Le moteur gagne."}
+    game["resigned_by"] = color
+    winner = game["black_name"] if color == "white" else game["white_name"]
+    return {"game_over": f"{game[f'{color}_name']} ({color}) abandonne. {winner} gagne."}
 
 
 @mcp.tool()
 def game_status(game_id: str) -> dict:
-    """Statut de la partie : trait, numéro de coup, fin éventuelle."""
+    """Statut de la partie : joueurs, trait, numéro de coup, fin éventuelle."""
     game = _get_game(game_id)
     board = game["board"]
     status = {
         "level": game["level"],
-        "opponent": game["opponent"],
         "move_number": board.fullmove_number,
         "moves_played": len(board.move_stack),
         "in_check": board.is_check(),
@@ -353,9 +502,13 @@ def game_status(game_id: str) -> dict:
         **_turn_info(game),
     }
     if game["resigned"]:
-        status["result"] = "Abandon du joueur."
+        who = game[f"{game['resigned_by']}_name"]
+        status["result"] = (
+            _game_over_info(board, game)
+            or f"{who} ({game['resigned_by']}) a abandonné."
+        )
     elif board.is_game_over():
-        status["result"] = _game_over_info(board, game["player_color"])
+        status["result"] = _game_over_info(board, game)
     return status
 
 
@@ -403,150 +556,15 @@ def try_puzzle_move(puzzle_id: str, move: str) -> dict:
     }
 
 
-# ---------------------------------------------------------------------------
-# Interface web : plateau interactif jouable dans le navigateur.
-# Les parties sont partagées avec les outils MCP : l'agent IA et le navigateur
-# voient (et peuvent jouer dans) les mêmes parties.
-# ---------------------------------------------------------------------------
-
-WEB_DIR = Path(__file__).parent / "web"
-
-
-def _san_history(board: chess.Board) -> list[str]:
-    replay = chess.Board()
-    history = []
-    for move in board.move_stack:
-        history.append(replay.san(move))
-        replay.push(move)
-    return history
-
-
-def _web_state(game_id: str, game: dict) -> dict:
-    board = game["board"]
-    over = game["resigned"] or board.is_game_over()
-    player_white = game["player_color"] == "white"
-    grid = [
-        [
-            (board.piece_at(chess.square(f, rank)).symbol()
-             if board.piece_at(chess.square(f, rank)) else ".")
-            for f in range(8)
-        ]
-        for rank in range(7, -1, -1)
-    ]
-    result = ""
-    if game["resigned"]:
-        result = "Abandon du joueur."
-    elif board.is_game_over():
-        result = _game_over_info(board, game["player_color"])
-    return {
-        "game_id": game_id,
-        "fen": board.fen(),
-        "board": grid,
-        "your_color": game["player_color"],
-        "opponent": game["opponent"],
-        "your_turn": not over and board.turn == (chess.WHITE if player_white else chess.BLACK),
-        "in_check": board.is_check(),
-        "over": over,
-        "result": result,
-        "moves": _san_history(board),
-        "legal_moves_uci": [] if over else [m.uci() for m in board.legal_moves],
-        "last_move": board.peek().uci() if board.move_stack else None,
-    }
-
-
-def _web_authorized(request: Request) -> bool:
-    token = os.environ.get("LICHESS_MCP_AUTH_TOKEN", "").strip()
-    if not token:
-        return True
-    return request.headers.get("authorization", "") == f"Bearer {token}"
-
-
-@mcp.custom_route("/", methods=["GET"])
-async def web_index(request: Request) -> FileResponse:
-    index = WEB_DIR / "index.html"
-    if not index.is_file():
-        return JSONResponse(
-            {"error": "web/index.html est absent du déploiement (vérifiez le Dockerfile)"},
-            status_code=500,
-        )
-    return FileResponse(index)
-
-
-@mcp.custom_route("/web/api/games", methods=["POST"])
-async def web_new_game(request: Request) -> JSONResponse:
-    if not _web_authorized(request):
-        return JSONResponse({"error": "non autorisé"}, status_code=401)
-    body = await request.json()
-    color = str(body.get("color", "white")).lower()
-    level = str(body.get("level", "medium")).lower()
-    opponent = str(body.get("opponent", "engine")).lower()
-    if color not in ("white", "black"):
-        return JSONResponse({"error": "color doit valoir 'white' ou 'black'"}, status_code=400)
-    if level not in ("easy", "medium", "hard"):
-        return JSONResponse({"error": "level doit valoir 'easy', 'medium' ou 'hard'"}, status_code=400)
-    if opponent not in ("engine", "human"):
-        return JSONResponse({"error": "opponent doit valoir 'engine' ou 'human'"}, status_code=400)
-    game_id = uuid.uuid4().hex[:8]
-    game = {
-        "board": chess.Board(),
-        "player_color": color,
-        "level": level,
-        "opponent": opponent,
-        "engine": Engine(level),
-        "resigned": False,
-    }
-    GAMES[game_id] = game
-    if opponent == "engine" and color == "black":
-        await run_in_threadpool(_engine_reply, game)
-    return JSONResponse(_web_state(game_id, game))
-
-
-@mcp.custom_route("/web/api/games/{game_id}", methods=["GET"])
-async def web_get_game(request: Request) -> JSONResponse:
-    if not _web_authorized(request):
-        return JSONResponse({"error": "non autorisé"}, status_code=401)
-    game_id = request.path_params["game_id"]
-    if game_id not in GAMES:
-        return JSONResponse({"error": "partie inconnue"}, status_code=404)
-    return JSONResponse(_web_state(game_id, GAMES[game_id]))
-
-
-@mcp.custom_route("/web/api/games/{game_id}/move", methods=["POST"])
-async def web_play_move(request: Request) -> JSONResponse:
-    if not _web_authorized(request):
-        return JSONResponse({"error": "non autorisé"}, status_code=401)
-    game_id = request.path_params["game_id"]
-    if game_id not in GAMES:
-        return JSONResponse({"error": "partie inconnue"}, status_code=404)
-    game = GAMES[game_id]
-    board = game["board"]
-    if game["resigned"]:
-        return JSONResponse({"error": "la partie est terminée (abandon)"}, status_code=400)
-    if board.is_game_over():
-        return JSONResponse({"error": "la partie est déjà terminée"}, status_code=400)
-    player_white = game["player_color"] == "white"
-    if board.turn != (chess.WHITE if player_white else chess.BLACK):
-        return JSONResponse({"error": "ce n'est pas votre tour"}, status_code=400)
-    body = await request.json()
-    move = str(body.get("move", ""))
-    parsed = _parse_move(board, move)
-    if parsed is None or parsed not in board.legal_moves:
-        return JSONResponse({"error": f"coup illégal ou invalide : {move}"}, status_code=400)
-    board.push(parsed)
-    if game["opponent"] == "engine" and not board.is_game_over():
-        await run_in_threadpool(_engine_reply, game)
-    return JSONResponse(_web_state(game_id, game))
-
-
 @mcp.tool()
 def analyze_game(game_id: str, depth: int = 15) -> dict:
-    """Analyse une partie terminée (ou en cours) avec Stockfish.
+    """Analyse une partie (ou un échiquier d'analyse) avec Stockfish.
 
     Retourne un PGN annoté compatible Lichess ([%eval ...], erreurs marquées)
     et la liste des coups critiques (imprécisions, erreurs, blunders).
 
     Args:
-        game_id: identifiant de la partie.
+        game_id: identifiant de la partie ou de l'échiquier d'analyse.
         depth: profondeur d'analyse Stockfish (1 à 30, défaut 15).
     """
     game = _get_game(game_id)
@@ -576,6 +594,203 @@ def analyze_pgn(pgn: str, depth: int = 15) -> dict:
     if not moves:
         raise ValueError("Aucun coup trouvé dans ce PGN.")
     return analyze_moves(moves, depth)
+
+
+# ---------------------------------------------------------------------------
+# Interface web : plateau interactif jouable dans le navigateur.
+# Les parties sont partagées avec les outils MCP : agents et navigateurs voient
+# (et peuvent jouer dans) les mêmes parties. Le mode spectateur est géré côté
+# client (le navigateur n'envoie simplement aucun coup).
+# ---------------------------------------------------------------------------
+
+WEB_DIR = Path(__file__).parent / "web"
+
+
+def _san_history(board: chess.Board) -> list[str]:
+    replay = chess.Board()
+    history = []
+    for move in board.move_stack:
+        history.append(replay.san(move))
+        replay.push(move)
+    return history
+
+
+def _web_state(game_id: str, game: dict, your_color: str | None) -> dict:
+    board = game["board"]
+    over = game["resigned"] or board.is_game_over()
+    grid = [
+        [
+            (board.piece_at(chess.square(f, rank)).symbol()
+             if board.piece_at(chess.square(f, rank)) else ".")
+            for f in range(8)
+        ]
+        for rank in range(7, -1, -1)
+    ]
+    result = ""
+    if game["resigned"]:
+        who = game[f"{game['resigned_by']}_name"]
+        result = f"{who} ({game['resigned_by']}) a abandonné."
+    elif board.is_game_over():
+        result = _game_over_info(board, game)
+    your_turn = (
+        not over and your_color is not None
+        and board.turn == _color_side(your_color)
+    )
+    return {
+        "game_id": game_id,
+        "fen": board.fen(),
+        "board": grid,
+        "white_name": game["white_name"],
+        "black_name": game["black_name"],
+        "engine_color": game["engine_color"],
+        "kind": game["kind"],
+        **_seat_info(game),
+        "your_color": your_color,
+        "your_turn": your_turn,
+        "in_check": board.is_check(),
+        "over": over,
+        "result": result,
+        "moves": _san_history(board),
+        "legal_moves_uci": [] if over or your_color is None else [m.uci() for m in board.legal_moves],
+        "last_move": board.peek().uci() if board.move_stack else None,
+    }
+
+
+def _web_authorized(request: Request) -> bool:
+    token = os.environ.get("LICHESS_MCP_AUTH_TOKEN", "").strip()
+    if not token:
+        return True
+    return request.headers.get("authorization", "") == f"Bearer {token}"
+
+
+@mcp.custom_route("/", methods=["GET"])
+async def web_index(request: Request) -> FileResponse:
+    index = WEB_DIR / "index.html"
+    if not index.is_file():
+        return JSONResponse(
+            {"error": "web/index.html est absent du déploiement (vérifiez le Dockerfile)"},
+            status_code=500,
+        )
+    return FileResponse(index)
+
+
+@mcp.custom_route("/web/api/games", methods=["POST"])
+async def web_new_game(request: Request) -> JSONResponse:
+    if not _web_authorized(request):
+        return JSONResponse({"error": "non autorisé"}, status_code=401)
+    body = await request.json()
+    your_color = str(body.get("your_color", "white")).lower()
+    if your_color not in ("white", "black"):
+        return JSONResponse({"error": "your_color doit valoir 'white' ou 'black'"}, status_code=400)
+    against_engine = bool(body.get("against_engine", True))
+    try:
+        level = _check_level(str(body.get("level", "medium")))
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+    your_name = str(body.get("your_name", "Joueur")).strip() or "Joueur"
+    opponent_name = str(body.get("opponent_name", "Adversaire")).strip() or "Adversaire"
+
+    engine_color = None
+    if against_engine:
+        engine_color = "black" if your_color == "white" else "white"
+        opponent_name = "Moteur"
+
+    if your_color == "white":
+        white_name, black_name = your_name, opponent_name
+    else:
+        white_name, black_name = opponent_name, your_name
+
+    game_id = _create_game(white_name, black_name, level, engine_color)
+    game = GAMES[game_id]
+    if engine_color == "white":
+        await run_in_threadpool(_engine_reply, game)
+    return JSONResponse(_web_state(game_id, game, your_color))
+
+
+@mcp.custom_route("/web/api/games/{game_id}", methods=["GET"])
+async def web_get_game(request: Request) -> JSONResponse:
+    if not _web_authorized(request):
+        return JSONResponse({"error": "non autorisé"}, status_code=401)
+    game_id = request.path_params["game_id"]
+    if game_id not in GAMES:
+        return JSONResponse({"error": "partie inconnue"}, status_code=404)
+    game = GAMES[game_id]
+    your_color = request.query_params.get("your_color")
+    if your_color not in ("white", "black"):
+        your_color = None
+    return JSONResponse(_web_state(game_id, game, your_color))
+
+
+@mcp.custom_route("/web/api/games/{game_id}/join", methods=["POST"])
+async def web_join_game(request: Request) -> JSONResponse:
+    if not _web_authorized(request):
+        return JSONResponse({"error": "non autorisé"}, status_code=401)
+    game_id = request.path_params["game_id"]
+    if game_id not in GAMES:
+        return JSONResponse({"error": "partie inconnue"}, status_code=404)
+    game = GAMES[game_id]
+    body = await request.json()
+    name = str(body.get("name", "")).strip()
+    if not name:
+        return JSONResponse({"error": "name doit être un nom non vide"}, status_code=400)
+    color = body.get("color")
+    if color is not None:
+        color = str(color).lower()
+        if color not in ("white", "black"):
+            return JSONResponse({"error": "color doit valoir 'white' ou 'black'"}, status_code=400)
+        if game["engine_color"] == color:
+            return JSONResponse({"error": f"le camp {color} est joué par le moteur"}, status_code=400)
+        seat = game[f"{color}_seat"]
+        if seat is not None and seat != name:
+            return JSONResponse({"error": f"le camp {color} est déjà occupé par {seat}"}, status_code=400)
+    try:
+        result = join_game(game_id, name, color)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+    state = _web_state(game_id, game, result["your_color"])
+    state["joined"] = True
+    return JSONResponse(state)
+
+
+@mcp.custom_route("/web/api/games/{game_id}/move", methods=["POST"])
+async def web_play_move(request: Request) -> JSONResponse:
+    if not _web_authorized(request):
+        return JSONResponse({"error": "non autorisé"}, status_code=401)
+    game_id = request.path_params["game_id"]
+    if game_id not in GAMES:
+        return JSONResponse({"error": "partie inconnue"}, status_code=404)
+    game = GAMES[game_id]
+    board = game["board"]
+    body = await request.json()
+    your_color = str(body.get("your_color", "white")).lower()
+    if your_color not in ("white", "black"):
+        return JSONResponse({"error": "your_color doit valoir 'white' ou 'black'"}, status_code=400)
+    if game["resigned"]:
+        return JSONResponse({"error": "la partie est terminée (abandon)"}, status_code=400)
+    if board.is_game_over():
+        return JSONResponse({"error": "la partie est déjà terminée"}, status_code=400)
+    if game["engine_color"] == your_color:
+        return JSONResponse({"error": "ce camp est joué par le moteur"}, status_code=400)
+    if board.turn != _color_side(your_color):
+        return JSONResponse({"error": "ce n'est pas le tour de ce camp"}, status_code=400)
+    your_name = str(body.get("your_name", "")).strip()
+    seat = game[f"{your_color}_seat"]
+    other = "black" if your_color == "white" else "white"
+    if seat is not None and your_name != seat:
+        return JSONResponse({"error": f"le camp {your_color} est occupé par {seat}"}, status_code=400)
+    if seat is None and your_name:
+        if game[f"{other}_seat"] == your_name:
+            return JSONResponse({"error": "un joueur ne peut pas jouer les deux camps"}, status_code=400)
+        game[f"{your_color}_seat"] = your_name
+        game[f"{your_color}_name"] = your_name
+    move = str(body.get("move", ""))
+    parsed = _parse_move(board, move)
+    if parsed is None or parsed not in board.legal_moves:
+        return JSONResponse({"error": f"coup illégal ou invalide : {move}"}, status_code=400)
+    board.push(parsed)
+    if game["engine_color"] and not board.is_game_over():
+        await run_in_threadpool(_engine_reply, game)
+    return JSONResponse(_web_state(game_id, game, your_color))
 
 
 if __name__ == "__main__":

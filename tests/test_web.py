@@ -1,5 +1,7 @@
 """Tests de l'interface web (plateau navigateur) via l'app ASGI FastMCP."""
 
+import asyncio
+
 import httpx
 import pytest
 from httpx import ASGITransport
@@ -17,6 +19,28 @@ def _clean_state(monkeypatch):
     server.ACTIVE_PUZZLES.clear()
 
 
+@pytest.fixture
+def client():
+    app = server.mcp.http_app()
+
+    class _AsyncClient:
+        def __init__(self):
+            self._client = httpx.AsyncClient(
+                transport=ASGITransport(app=app), base_url="http://test"
+            )
+
+        def _run(self, coro):
+            return asyncio.run(coro)
+
+        def get(self, path, headers=None):
+            return self._run(self._client.get(path, headers=headers))
+
+        def post(self, path, json=None, headers=None):
+            return self._run(self._client.post(path, json=json, headers=headers))
+
+    return _AsyncClient()
+
+
 def _post_json(client, path, payload):
     return client.post(path, json=payload)
 
@@ -32,42 +56,77 @@ def test_index_serves_html(client):
     assert r.status_code == 200
     assert "lichess-mcp" in r.text
     assert "board" in r.text
+    assert 'src="util.js"' in r.text
 
 
-def test_web_new_game(client):
-    r = _post_json(client, "/web/api/games", {"color": "white", "level": "easy"})
+def test_web_new_game_engine(client):
+    r = _post_json(client, "/web/api/games", {
+        "your_name": "Nicolas", "your_color": "white",
+        "against_engine": True, "level": "easy",
+    })
     assert r.status_code == 200
     state = r.json()
+    assert state["white_name"] == "Nicolas"
+    assert state["black_name"] == "Moteur"
+    assert state["engine_color"] == "black"
     assert state["your_color"] == "white"
     assert state["your_turn"] is True
     assert len(state["legal_moves_uci"]) == 20
-    assert len(state["board"]) == 8
-    assert all(len(row) == 8 for row in state["board"])
     assert state["board"][0][4] == "k"
     assert state["board"][7][4] == "K"
     assert state["board"][6][4] == "P"
 
 
-def test_web_new_game_black_engine_replies(client):
-    r = _post_json(client, "/web/api/games", {"color": "black", "level": "easy"})
+def test_web_new_game_free(client):
+    r = _post_json(client, "/web/api/games", {
+        "your_name": "Nicolas", "your_color": "white",
+        "against_engine": False, "opponent_name": "Agent IA",
+    })
     assert r.status_code == 200
     state = r.json()
+    assert state["white_name"] == "Nicolas"
+    assert state["black_name"] == "Agent IA"
+    assert state["engine_color"] is None
+
+
+def test_web_new_game_engine_white_plays_first(client):
+    r = _post_json(client, "/web/api/games", {
+        "your_name": "Nicolas", "your_color": "black",
+        "against_engine": True, "level": "easy",
+    })
+    state = r.json()
+    assert state["engine_color"] == "white"
     assert state["your_turn"] is True
     assert len(state["moves"]) == 1
 
 
 def test_web_new_game_invalid_params(client):
-    r = _post_json(client, "/web/api/games", {"color": "rouge"})
+    r = _post_json(client, "/web/api/games", {"your_color": "rouge"})
     assert r.status_code == 400
     r = _post_json(client, "/web/api/games", {"level": "impossible"})
     assert r.status_code == 400
 
 
-def test_web_get_game(client):
-    gid = server.new_game("white", "easy")["game_id"]
+def test_web_get_game_as_player(client):
+    gid = server.new_game(white="A", black="B")["game_id"]
+    r = client.get(f"/web/api/games/{gid}?your_color=white")
+    assert r.status_code == 200
+    state = r.json()
+    assert state["your_color"] == "white"
+    assert state["your_turn"] is True
+    assert len(state["legal_moves_uci"]) == 20
+
+
+def test_web_get_game_as_spectator(client):
+    gid = server.new_game(white="A", black="B")["game_id"]
     r = client.get(f"/web/api/games/{gid}")
     assert r.status_code == 200
-    assert r.json()["game_id"] == gid
+    state = r.json()
+    assert state["your_color"] is None
+    assert state["your_turn"] is False
+    assert state["legal_moves_uci"] == []
+    assert state["white_name"] == "A"
+    assert state["black_name"] == "B"
 
 
 def test_web_get_unknown_game(client):
@@ -76,51 +135,58 @@ def test_web_get_unknown_game(client):
 
 
 def test_web_play_move(client):
-    gid = server.new_game("white", "easy")["game_id"]
-    r = _post_json(client, f"/web/api/games/{gid}/move", {"move": "e2e4"})
+    gid = server.new_game(white="Nicolas", black="Agent IA")["game_id"]
+    r = _post_json(client, f"/web/api/games/{gid}/move", {"move": "e2e4", "your_color": "white"})
     assert r.status_code == 200
     state = r.json()
     assert state["moves"][0] == "e4"
-    assert len(state["moves"]) == 2
-    assert state["your_turn"] is True
-    assert state["last_move"] is not None
+    assert state["your_turn"] is False
+    assert state["last_move"] == "e2e4"
 
 
 def test_web_play_move_san_accepted(client):
-    gid = server.new_game("white", "easy")["game_id"]
-    r = _post_json(client, f"/web/api/games/{gid}/move", {"move": "Nf3"})
+    gid = server.new_game(white="Nicolas", black="Agent IA")["game_id"]
+    r = _post_json(client, f"/web/api/games/{gid}/move", {"move": "Nf3", "your_color": "white"})
     assert r.status_code == 200
     assert r.json()["moves"][0] == "Nf3"
 
 
+def test_web_play_move_wrong_side_rejected(client):
+    gid = server.new_game(white="Nicolas", black="Agent IA")["game_id"]
+    r = _post_json(client, f"/web/api/games/{gid}/move", {"move": "e7e5", "your_color": "black"})
+    assert r.status_code == 400
+
+
 def test_web_play_move_illegal_rejected(client):
-    gid = server.new_game("white", "easy")["game_id"]
-    r = _post_json(client, f"/web/api/games/{gid}/move", {"move": "e2e5"})
+    gid = server.new_game(white="Nicolas", black="Agent IA")["game_id"]
+    r = _post_json(client, f"/web/api/games/{gid}/move", {"move": "e2e5", "your_color": "white"})
     assert r.status_code == 400
-    r = _post_json(client, f"/web/api/games/{gid}/move", {"move": "zz9"})
+    r = _post_json(client, f"/web/api/games/{gid}/move", {"move": "zz9", "your_color": "white"})
     assert r.status_code == 400
 
 
-def test_web_play_move_not_your_turn(client):
-    gid = server.new_game("white", "easy")["game_id"]
-    server.GAMES[gid]["board"].push_uci("e2e4")
-    r = _post_json(client, f"/web/api/games/{gid}/move", {"move": "d2d4"})
+def test_web_play_move_engine_side_rejected(client):
+    r = _post_json(client, "/web/api/games", {
+        "your_name": "Nicolas", "your_color": "white",
+        "against_engine": True, "level": "easy",
+    })
+    gid = r.json()["game_id"]
+    r = _post_json(client, f"/web/api/games/{gid}/move", {"move": "e7e5", "your_color": "black"})
     assert r.status_code == 400
 
 
 def test_web_move_on_ended_game_rejected(client):
-    gid = server.new_game("white", "easy")["game_id"]
-    server.resign(gid)
-    r = _post_json(client, f"/web/api/games/{gid}/move", {"move": "e2e4"})
+    gid = server.new_game(white="A", black="B")["game_id"]
+    server.resign(gid, color="white")
+    r = _post_json(client, f"/web/api/games/{gid}/move", {"move": "e2e4", "your_color": "white"})
     assert r.status_code == 400
 
 
 def test_web_game_over_state(client):
-    gid = server.new_game("white", "medium")["game_id"]
-    board = server.GAMES[gid]["board"]
-    for uci in ("f2f3", "e7e5", "g2g4", "d8h4"):
-        board.push_uci(uci)
-    r = client.get(f"/web/api/games/{gid}")
+    gid = server.new_game(white="A", black="B")["game_id"]
+    for uci, color in (("f2f3", "white"), ("e7e5", "black"), ("g2g4", "white"), ("d8h4", "black")):
+        server.GAMES[gid]["board"].push_uci(uci)
+    r = client.get(f"/web/api/games/{gid}?your_color=white")
     state = r.json()
     assert state["over"] is True
     assert "Mat" in state["result"]
@@ -128,31 +194,31 @@ def test_web_game_over_state(client):
 
 
 def test_web_shared_with_mcp(client):
-    gid = server.new_game("white", "easy")["game_id"]
-    r = _post_json(client, f"/web/api/games/{gid}/move", {"move": "e2e4"})
+    gid = server.new_game(white="Nicolas", black="Agent IA")["game_id"]
+    r = _post_json(client, f"/web/api/games/{gid}/move", {"move": "e2e4", "your_color": "white"})
     assert r.status_code == 200
     mcp_state = server.get_board(gid)
     assert mcp_state["fen"] == r.json()["fen"]
-    r2 = server.play_move(gid, "Nf3")
-    web_state = client.get(f"/web/api/games/{gid}").json()
+    r2 = server.play_move(gid, "e5", color="black")
+    web_state = client.get(f"/web/api/games/{gid}?your_color=white").json()
     assert web_state["fen"] == r2["fen"]
 
 
 def test_web_auth_required_when_token_set(client, monkeypatch):
     monkeypatch.setenv("LICHESS_MCP_AUTH_TOKEN", "secret-token")
-    r = _post_json(client, "/web/api/games", {"color": "white"})
+    r = _post_json(client, "/web/api/games", {"your_color": "white"})
     assert r.status_code == 401
-    gid = server.new_game("white", "easy")["game_id"]
+    gid = server.new_game(white="A", black="B")["game_id"]
     r = client.get(f"/web/api/games/{gid}")
     assert r.status_code == 401
-    r = _post_json(client, f"/web/api/games/{gid}/move", {"move": "e2e4"})
+    r = _post_json(client, f"/web/api/games/{gid}/move", {"move": "e2e4", "your_color": "white"})
     assert r.status_code == 401
 
 
 def test_web_auth_token_accepted(client, monkeypatch):
     monkeypatch.setenv("LICHESS_MCP_AUTH_TOKEN", "secret-token")
     auth = {"Authorization": "Bearer secret-token"}
-    r = client.post("/web/api/games", json={"color": "white", "level": "easy"}, headers=auth)
+    r = client.post("/web/api/games", json={"your_name": "Nicolas", "your_color": "white"}, headers=auth)
     assert r.status_code == 200
     gid = r.json()["game_id"]
     r = client.get(f"/web/api/games/{gid}", headers=auth)
