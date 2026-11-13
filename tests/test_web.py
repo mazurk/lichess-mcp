@@ -261,7 +261,6 @@ def test_web_state_status_fields(client):
     assert state["status"] == "en cours"
     assert state["analysed"] is False
     for uci in ("f2f3", "e7e5", "g2g4", "d8h4"):
-        side = "white" if uci[0] in "fg" else "black"
         server.GAMES[gid]["board"].push_uci(uci)
     state = client.get(f"/web/api/games/{gid}").json()
     assert state["status"] == "terminée"
