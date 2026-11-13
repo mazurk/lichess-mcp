@@ -238,11 +238,12 @@ def test_get_board_navigation():
     assert "rnbqkbnr/pppppppp" in r0["fen"]
     assert "Prochain coup joué : e4" in r0["note"]
 
-    # après le 2e coup : les noirs au trait, pas de cavalier f3
+    # après le 2e coup (e4 e5) : trait aux blancs, pas de cavalier en f3
     r2 = server.get_board(gid, ply=2)
     assert r2["ply"] == 2
-    assert r2["turn"] == "white"  # info de trait = partie (info live)
-    assert "Nf3" not in r2["fen"] and "r1bqkbnr" in r2["fen"]
+    assert r2["turn"] == "white"  # trait de la position rejouée
+    assert "5N2" not in r2["fen"]  # pas de cavalier blanc en f3
+    assert "rnbqkbnr" in r2["fen"]  # pièces noires intactes
 
     # défaut = position actuelle ; bornes refusées
     r_now = server.get_board(gid)
