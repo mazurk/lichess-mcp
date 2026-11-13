@@ -230,3 +230,13 @@ def test_web_index_served_without_auth(client, monkeypatch):
     monkeypatch.setenv("LICHESS_MCP_AUTH_TOKEN", "secret-token")
     r = client.get("/")
     assert r.status_code == 200
+
+
+def test_web_state_exposes_turn(client):
+    """L'indicateur de trait (page web) dépend du champ turn."""
+    gid = server.new_game(white="A", black="B")["game_id"]
+    r = client.get(f"/web/api/games/{gid}?your_color=white")
+    assert r.json()["turn"] == "white"
+    server.GAMES[gid]["board"].push_uci("e2e4")
+    r = client.get(f"/web/api/games/{gid}?your_color=white")
+    assert r.json()["turn"] == "black"
