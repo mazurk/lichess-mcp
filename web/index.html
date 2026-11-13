@@ -40,6 +40,7 @@
         background: #262421; color: var(--text); font-size: 14px; }
   button { background: var(--accent); border: none; color: #fff; font-weight: 600; cursor: pointer; }
   button:hover { filter: brightness(1.1); }
+  #btnRefreshGames { width: auto; flex: 0 0 auto; padding: 4px 12px; font-size: 15px; line-height: 1; }
   #status { min-height: 20px; font-size: 13px; }
   #result { font-weight: 700; color: var(--accent); }
   #moves { max-height: 260px; overflow-y: auto; font-size: 13px; line-height: 1.8; display: grid; grid-template-columns: 34px 1fr 1fr; align-items: baseline; }
@@ -124,7 +125,7 @@
       <h1>Rejoindre une partie</h1>
       <label for="gameId">Partie du serveur</label>
       <div style="display:flex; gap:6px;">
-        <select id="gameId" style="flex:1;"></select>
+        <select id="gameId" style="flex:1 1 auto; min-width: 0;"></select>
         <button id="btnRefreshGames" title="Rafraîchir la liste des parties">↻</button>
       </div>
       <label for="joinName">Votre nom</label>
