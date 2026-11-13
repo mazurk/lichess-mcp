@@ -1,6 +1,5 @@
 """Tests fonctionnels du serveur MCP d'échecs hors ligne (interface neutre)."""
 
-import chess
 import pytest
 
 import server

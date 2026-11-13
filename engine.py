@@ -84,10 +84,8 @@ class Engine:
             board.push(move)
             score = -self._negamax(board, depth - 1, -beta, -alpha)
             board.pop()
-            if score > best:
-                best = score
-            if best > alpha:
-                alpha = best
+            best = max(best, score)
+            alpha = max(alpha, best)
             if alpha >= beta:
                 break
         return best

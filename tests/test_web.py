@@ -184,7 +184,7 @@ def test_web_move_on_ended_game_rejected(client):
 
 def test_web_game_over_state(client):
     gid = server.new_game(white="A", black="B")["game_id"]
-    for uci, color in (("f2f3", "white"), ("e7e5", "black"), ("g2g4", "white"), ("d8h4", "black")):
+    for uci in ("f2f3", "e7e5", "g2g4", "d8h4"):
         server.GAMES[gid]["board"].push_uci(uci)
     r = client.get(f"/web/api/games/{gid}?your_color=white")
     state = r.json()

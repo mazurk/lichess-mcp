@@ -2,8 +2,6 @@
 
 from pathlib import Path
 
-import server
-
 REPO = Path(__file__).parent.parent
 HTML = (REPO / "web" / "index.html").read_text(encoding="utf-8")
 UTIL = (REPO / "web" / "util.js").read_text(encoding="utf-8")
