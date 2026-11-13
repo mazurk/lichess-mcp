@@ -438,7 +438,9 @@ function filterGamesForMode(games) {
   // Filtrage selon le mode : le sélecteur ne propose que les parties
   // pertinentes (séparation parties classiques / échiquiers d'analyse).
   if (mode === "join") {
-    return games.filter(g => g.kind === "game" && !g.analysed);
+    // Parties classiques joignables : non analysées, plus les parties EN COURS
+    // déjà analysées par l'agent (affichées en rouge dans la liste).
+    return games.filter(g => g.kind === "game" && (!g.analysed || g.status === "en cours"));
   }
   if (mode === "analysis") {
     return games.filter(g => g.kind === "game" && g.analysed && g.status === "terminée");
@@ -468,10 +470,12 @@ async function refreshGameList() {
   for (const g of games) {
     const opt = document.createElement("option");
     opt.value = g.game_id;
+    const ongoingAnalysed = g.analysed && g.status === "en cours";
     const label = g.game_id + " — " + g.white_name + " vs " + g.black_name
       + " · " + g.plies + " coups · " + g.status
-      + (g.analysed ? " · analysée" : "");
+      + (g.analysed ? (ongoingAnalysed ? " · ANALYSÉE en cours !" : " · analysée") : "");
     opt.textContent = label;
+    if (ongoingAnalysed) opt.style.color = "#d34f5a";
     select.appendChild(opt);
   }
   if (previous && games.some(g => g.game_id === previous)) {
