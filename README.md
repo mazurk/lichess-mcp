@@ -22,13 +22,17 @@ format Lichess (FEN + coups UCI).
 - **Analyse Stockfish** : `analyze_game` (partie ou échiquier d'analyse) et
   `analyze_pgn` (n'importe quel PGN) retournent un PGN annoté compatible
   Lichess (`[%eval ...]`, blunders/erreurs/imprécisions marqués) avec le
-  meilleur coup à chaque erreur.
+  meilleur coup à chaque erreur. `analyze_game` **publie** aussi l'analyse sur
+  l'interface web (`publish=True`, défaut) : jauge d'évaluation par coup et
+  coups gaffés colorés pour le debrief.
 - **Règles complètes** gérées par [python-chess](https://github.com/niklasf/python-chess) :
   promotion, prise en passant, roc, pat, règle des 50 coups, répétition triple.
 - **Puzzles** au format Lichess : mats en un coup à résoudre via l'agent.
 - **Interface web** : plateau interactif dans le navigateur
   (`http://localhost:8000/`) — jouez à la souris, rejoignez une partie par son
-  identifiant, ou regardez en **mode spectateur**.
+  identifiant, ou regardez en **mode spectateur**. Rendu façon Lichess :
+  **pièces SVG Cburnett** (celles de lichess.org, embarquées, 100 % hors
+  ligne) et couleurs du plateau officiel.
 - **Historique** : annulation d'un coup (+ réponse du moteur), abandon par camp, statut.
 
 ## Outils MCP exposés

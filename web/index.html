@@ -6,8 +6,9 @@
 <title>lichess-mcp — plateau local</title>
 <style>
   :root {
-    --light: #ebecd0; --dark: #779556; --hl: #f6f669;
+    --light: #f0d9b5; --dark: #b58863; --hl: #cdd26a;
     --bg: #262421; --panel: #302e2b; --text: #bababa; --accent: #8ca64c;
+    --blunder: #d34f5a; --mistake: #e8a33d; --inaccuracy: #d7c14a;
   }
   * { box-sizing: border-box; }
   body { margin: 0; display: flex; justify-content: center; background: var(--bg);
@@ -18,13 +19,14 @@
   .sq { position: relative; display: flex; align-items: center; justify-content: center;
         font-size: 44px; line-height: 1; cursor: pointer; }
   .sq.light { background: var(--light); } .sq.dark { background: var(--dark); }
-  .sq.sel::after { content: ""; position: absolute; inset: 0; background: var(--hl); opacity: .5; }
-  .sq.target::before { content: ""; position: absolute; width: 16px; height: 16px;
-        border-radius: 50%; background: rgba(0,0,0,.25); }
+  .sq.sel::after { content: ""; position: absolute; inset: 0; background: rgba(20, 85, 30, 0.5); }
+  .sq.target::before { content: ""; position: absolute; width: 22px; height: 22px;
+        border-radius: 50%; background: rgba(20, 85, 30, 0.35); }
+  .sq.target.capture::before { border-radius: 0; inset: 4px; width: auto; height: auto;
+        background: radial-gradient(rgba(20,85,30,0) 55%, rgba(20,85,30,0.35) 56%); }
   .sq.last { box-shadow: inset 0 0 0 3px rgba(255,255,100,.7); }
-  .piece { display: block; width: 100%; text-align: center; }
-  .piece.w { color: #fdfdf6; -webkit-text-stroke: 1.2px #1a1a1a; paint-order: stroke fill; text-shadow: 0 1px 2px rgba(0,0,0,.35); }
-  .piece.b { color: #221d18; -webkit-text-stroke: .6px #0d0b09; text-shadow: 0 1px 1px rgba(255,255,255,.10); }
+  .piece { width: 52px; height: 52px; display: block; margin: auto; pointer-events: none; }
+  .board { border: 4px solid #4a3f35; }
   .sq .coord { position: absolute; font-size: 10px; opacity: .6; }
   .sq .coord.f { right: 3px; bottom: 1px; } .sq .coord.r { left: 3px; top: 1px; }
   .side { width: 300px; display: flex; flex-direction: column; gap: 12px; }
@@ -40,7 +42,20 @@
   #result { font-weight: 700; color: var(--accent); }
   #moves { max-height: 260px; overflow-y: auto; font-size: 13px; line-height: 1.8; display: grid; grid-template-columns: 34px 1fr 1fr; align-items: baseline; }
   #moves .num { color: #888; }
-  #moves .mv-w, #moves .mv-b { padding-right: 6px; }
+  #moves .mv-w, #moves .mv-b { padding-right: 6px; border-radius: 3px; padding-left: 3px; }
+  #moves .blunder { color: #fff; background: var(--blunder); font-weight: 700; }
+  #moves .mistake { color: #fff; background: var(--mistake); font-weight: 700; }
+  #moves .inaccuracy { background: var(--inaccuracy); font-weight: 700; }
+  #moves .best { text-decoration: underline dotted var(--mistake); }
+  .evalchart { display: flex; align-items: center; gap: 1px; height: 64px; padding: 4px 0;
+               background: var(--panel); border-radius: 6px; margin-top: 6px; }
+  .evalbar { flex: 1 1 6px; min-width: 4px; max-width: 10px; background: #e8e8e8; position: relative; border-radius: 1px; }
+  .evalbar .white-adv, .evalbar .black-adv { position: absolute; left: 0; right: 0; }
+  .evalbar .white-adv { background: #f5f5f5; top: 0; }
+  .evalbar .black-adv { background: #565352; bottom: 0; }
+  .evalbar.crit { outline: 1px solid var(--blunder); }
+  .evallegend { font-size: 11px; color: #888; margin-top: 4px; }
+  .evallegend b { color: #ddd; }
   .board-wrap { display: flex; flex-direction: column; gap: 6px; }
   .board-label { font-size: 14px; color: #ddd; padding: 0 2px; display: flex; justify-content: space-between; }
   .board-label .seat { color: #8a8a8a; font-size: 12px; }
@@ -106,10 +121,13 @@
     <div class="card">
       <h1>Coups</h1>
       <div id="moves"><i>Aucune partie en cours.</i></div>
+      <div id="evalchart" class="evalchart" style="display:none;"></div>
+      <div id="evallegend" class="evallegend" style="display:none;"></div>
     </div>
   </div>
 </div>
 <script src="util.js"></script>
+<script src="pieces.js"></script>
 <script>
 "use strict";
 const FILES = "abcdefgh";
@@ -263,10 +281,11 @@ function render() {
       if (targetsFrom.some(m => m.slice(2,4) === sq)) div.classList.add("target");
       if (state.last_move && (sq === state.last_move.slice(0,2) || sq === state.last_move.slice(2,4))) div.classList.add("last");
       if (piece !== ".") {
-        const span = document.createElement("span");
-        span.className = "piece " + (piece === piece.toUpperCase() ? "w" : "b");
-        span.textContent = pieceGlyph(piece);
-        div.appendChild(span);
+        const img = document.createElement("img");
+        img.className = "piece";
+        img.src = pieceImgSrc(piece);
+        img.alt = piece;
+        div.appendChild(img);
       }
       if (r === (myWhite ? 1 : 8)) {
         const c = document.createElement("span"); c.className = "coord f"; c.textContent = f; div.appendChild(c);
@@ -278,18 +297,77 @@ function render() {
       boardEl.appendChild(div);
     }
   }
+  const analysis = state.analysis;
+  const info = (i) => {
+    if (!analysis || !analysis.evals || !analysis.evals[i]) return "";
+    const e = analysis.evals[i];
+    const label = e.label ? " " + e.label : "";
+    const best = e.best_move && e.label ? '" title="Meilleur coup : ' + e.best_move + '"' : "";
+    return {cls: e.label || "", title: best, label};
+  };
   movesEl.innerHTML = state.moves.length
     ? state.moves.map((m, i) => {
         if (i % 2 === 0) {
           const blackMove = state.moves[i + 1];
+          const wi = info(i), bi = info(i + 1);
           return '<span class="num">' + (i/2+1) + '.</span>'
-            + '<span class="mv-w">' + m + '</span>'
-            + '<span class="mv-b">' + (blackMove || "") + '</span>';
+            + '<span class="mv-w ' + wi.cls + '"' + (wi.title || "") + '>' + m + '</span>'
+            + '<span class="mv-b ' + bi.cls + '"' + (bi.title || "") + '>' + (blackMove || "") + '</span>';
         }
         return "";
       }).join("")
     : "<i>Aucun coup joué.</i>";
+  renderEvalChart();
   renderBoardLabels();
+}
+
+function evalWhiteToPct(evalWhite) {
+  // Conversion centipions (perspective blancs) en hauteur de barre (0-100 %).
+  // Les mats sont ramenés aux bornes.
+  const cp = Math.max(-1500, Math.min(1500, evalWhite));
+  return 50 + (cp / 1500) * 50;
+}
+
+function evalWhiteToText(evalWhite) {
+  if (evalWhite >= 90000) return "M" + Math.max(1, Math.round((100000 - evalWhite) / 100));
+  if (evalWhite <= -90000) return "-M" + Math.max(1, Math.round((100000 + evalWhite) / 100));
+  return (evalWhite / 100).toFixed(1);
+}
+
+function renderEvalChart() {
+  const chart = document.getElementById("evalchart");
+  const legend = document.getElementById("evallegend");
+  const analysis = state && state.analysis;
+  if (!analysis || !analysis.evals || !analysis.evals.length) {
+    chart.style.display = "none";
+    chart.innerHTML = "";
+    legend.style.display = "none";
+    return;
+  }
+  chart.style.display = "flex";
+  legend.style.display = "block";
+  chart.innerHTML = "";
+  for (const e of analysis.evals) {
+    const bar = document.createElement("div");
+    bar.className = "evalbar" + (e.label === "blunder" ? " crit" : "");
+    const pct = evalWhiteToPct(e.eval_white);
+    const whitePart = document.createElement("div");
+    whitePart.className = "white-adv";
+    whitePart.style.height = pct + "%";
+    const blackPart = document.createElement("div");
+    blackPart.className = "black-adv";
+    blackPart.style.height = (100 - pct) + "%";
+    bar.appendChild(whitePart);
+    bar.appendChild(blackPart);
+    bar.title = "Coup " + e.move_number + " " + e.san
+      + (e.label ? " (« " + e.label + " »)" : "")
+      + " — éval. " + evalWhiteToText(e.eval_white);
+    chart.appendChild(bar);
+  }
+  const last = analysis.evals[analysis.evals.length - 1];
+  legend.innerHTML = "Analyse Stockfish (profondeur " + analysis.depth + ") — "
+    + "dernière éval. : <b>" + evalWhiteToText(last.eval_white) + "</b> — "
+    + "<span class='blunder'>■</span> blunder <span class='mistake'>■</span> erreur <span class='inaccuracy'>■</span> imprécision";
 }
 
 function renderBoardLabels() {

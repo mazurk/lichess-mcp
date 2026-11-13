@@ -87,6 +87,7 @@ def analyze_moves(moves: list[chess.Move], depth: int = 15) -> dict:
     node = game
     board = chess.Board()
     critical: list[dict] = []
+    evals: list[dict] = []
     errors_white = errors_black = 0
 
     with chess.engine.SimpleEngine.popen_uci(path) as engine:
@@ -99,13 +100,20 @@ def analyze_moves(moves: list[chess.Move], depth: int = 15) -> dict:
             san = board.san(move)
             board.push(move)
 
-            info_after = engine.analyse(board, chess.engine.Limit(depth=depth))
-            score_after = _pov_score_cp(info_after, mover)
+            if board.is_checkmate():
+                # Le camp qui vient de jouer mate : pas d'analyse nécessaire,
+                # et la convention UCI « mate 0 » rend le signe ambigu.
+                score_after = 100000 - 100
+            else:
+                info_after = engine.analyse(board, chess.engine.Limit(depth=depth))
+                score_after = _pov_score_cp(info_after, mover)
+            score_white = score_after if mover == chess.WHITE else -score_after
             delta = score_after - score_before
 
             node = node.add_variation(move)
             comment = f"[%eval {_eval_str(score_after)}]"
             klass = _classify(delta)
+            label = None
             if klass:
                 nag, label = klass
                 node.nags.add(nag)
@@ -126,6 +134,14 @@ def analyze_moves(moves: list[chess.Move], depth: int = 15) -> dict:
                 else:
                     errors_black += 1
             node.comment = comment
+            evals.append({
+                "san": san,
+                "move_number": board.fullmove_number,
+                "side": "white" if mover == chess.WHITE else "black",
+                "eval_white": score_white,
+                "label": label,
+                "best_move": best_san if label else None,
+            })
 
     return {
         "pgn": str(game),
@@ -137,4 +153,5 @@ def analyze_moves(moves: list[chess.Move], depth: int = 15) -> dict:
             "black_errors": errors_black,
         },
         "critical": critical,
+        "evals": evals,
     }
