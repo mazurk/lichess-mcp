@@ -657,6 +657,7 @@ def _web_state(game_id: str, game: dict, your_color: str | None) -> dict:
         **_seat_info(game),
         "your_color": your_color,
         "your_turn": your_turn,
+        "turn": "white" if board.turn == chess.WHITE else "black",
         "in_check": board.is_check(),
         "over": over,
         "result": result,

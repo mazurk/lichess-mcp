@@ -246,13 +246,25 @@ function renderBoardLabels() {
   const myWhite = state.your_color !== "black";
   const topColor = myWhite ? "black" : "white";
   const bottomColor = myWhite ? "white" : "black";
+  // Libellé compact et unique par camp : « Blancs — libre » ou « Blancs — Nicolas ».
+  // Priorité d'affichage : occupant > moteur > nom > libre.
   const label = (color) => {
     const name = color === "white" ? state.white_name : state.black_name;
     const seat = color === "white" ? state.white_seat : state.black_seat;
-    const turnMark = state.turn === color && !state.over ? ' <span class="turn-ind">•</span>' : "";
-    const seatInfo = seat ? '<span class="seat">occupé par ' + escapeHtml(seat) + '</span>'
-                          : '<span class="seat">camp libre</span>';
-    return (color === "white" ? "Blancs" : "Noirs") + " : <b>" + escapeHtml(name) + "</b>" + turnMark + " " + seatInfo;
+    let who;
+    if (seat) {
+      who = escapeHtml(seat);
+    } else if (state.engine_color === color) {
+      who = "Moteur";
+    } else if (name && name !== (color === "white" ? "Blancs" : "Noirs")) {
+      who = escapeHtml(name);
+    } else {
+      who = "libre";
+    }
+    const isTurn = state.turn === color && !state.over;
+    const turnMark = isTurn ? ' <span class="turn-ind" title="camp au trait">●</span>' : "";
+    return '<span class="' + (isTurn ? "to-move" : "") + '">'
+      + (color === "white" ? "Blancs" : "Noirs") + " — " + who + turnMark + "</span>";
   };
   top.innerHTML = label(topColor);
   bottom.innerHTML = label(bottomColor);
