@@ -158,6 +158,27 @@ Deux outils d'analyse (Stockfish requis : installé dans l'image Docker, ou
 - `analyze_pgn(pgn, depth)` — même analyse pour un PGN importé, utile pour
   les parties jouées sur lichess.org sans avoir à les rejouer.
 
+## Sécurité
+
+Le serveur web est conçu pour être exposé (token bearer obligatoire sur l'API
+si `LICHESS_MCP_AUTH_TOKEN` est défini) :
+
+- **CSP stricte** (`script-src 'self'`) : aucun script externe ni inline —
+  le code de la page est entièrement local (`app.js`, `util.js`, `pieces.js`) ;
+- **Anti-XSS** : les noms de joueurs (contrôlés par l'utilisateur) sont
+  échappés avant toute injection HTML (`escapeHtml`, testé unitairement et en
+  navigateur réel avec un payload `<img onerror>`) ;
+- **En-têtes de durcissement** : `X-Content-Type-Options: nosniff`,
+  `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, pas de CORS
+  permissif ;
+- **Pas de traversée de chemin** : les routes servent des fichiers fixes ;
+  les identifiants de partie ne sont jamais utilisés pour construire un
+  chemin (simple clé de dictionnaire) ;
+- **Analyse statique** : Ruff (Python) et ESLint (JS) dans la CI ;
+- `tests/test_security.py` couvre ces garanties (traversée, méthodes,
+  en-têtes, authentification sur tous les endpoints, injection via
+  coups/FEN/identifiants).
+
 ## Limites
 
 - Partie locale uniquement ; pour jouer **en ligne sur lichess.org**, il

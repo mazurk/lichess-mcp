@@ -672,6 +672,28 @@ def _web_authorized(request: Request) -> bool:
     return request.headers.get("authorization", "") == f"Bearer {token}"
 
 
+_SECURITY_HEADERS = {
+    # Empêche l'exécution de scripts externes et limite l'impact d'une XSS
+    # résiduelle : seuls les scripts/styles du serveur et les data-URI
+    # (pièces SVG) sont autorisés.
+    "Content-Security-Policy": (
+        "default-src 'self'; "
+        "script-src 'self'; "
+        "style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data:; "
+        "connect-src 'self'; "
+        "frame-ancestors 'none'"
+    ),
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "no-referrer",
+}
+
+
+def _secure_file_response(path: Path, media_type: str | None = None) -> FileResponse:
+    return FileResponse(path, media_type=media_type, headers=_SECURITY_HEADERS)
+
+
 @mcp.custom_route("/", methods=["GET"])
 async def web_index(request: Request) -> FileResponse:
     index = WEB_DIR / "index.html"
@@ -680,7 +702,7 @@ async def web_index(request: Request) -> FileResponse:
             {"error": "web/index.html est absent du déploiement (vérifiez le Dockerfile)"},
             status_code=500,
         )
-    return FileResponse(index)
+    return _secure_file_response(index)
 
 
 @mcp.custom_route("/util.js", methods=["GET"])
@@ -691,7 +713,18 @@ async def web_util_js(request: Request) -> FileResponse:
             {"error": "web/util.js est absent du déploiement (vérifiez le Dockerfile)"},
             status_code=500,
         )
-    return FileResponse(util, media_type="application/javascript")
+    return _secure_file_response(util, "application/javascript")
+
+
+@mcp.custom_route("/app.js", methods=["GET"])
+async def web_app_js(request: Request) -> FileResponse:
+    app = WEB_DIR / "app.js"
+    if not app.is_file():
+        return JSONResponse(
+            {"error": "web/app.js est absent du déploiement (vérifiez le Dockerfile)"},
+            status_code=500,
+        )
+    return _secure_file_response(app, "application/javascript")
 
 
 @mcp.custom_route("/pieces.js", methods=["GET"])
@@ -702,7 +735,7 @@ async def web_pieces_js(request: Request) -> FileResponse:
             {"error": "web/pieces.js est absent du déploiement (vérifiez le Dockerfile)"},
             status_code=500,
         )
-    return FileResponse(pieces, media_type="application/javascript")
+    return _secure_file_response(pieces, "application/javascript")
 
 
 @mcp.custom_route("/web/api/games", methods=["POST"])

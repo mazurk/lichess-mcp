@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { isStaleResponse, pieceGlyph } from "../../web/util.js";
+import { isStaleResponse, pieceGlyph, escapeHtml } from "../../web/util.js";
 
 const state = (gameId, moves) => ({ game_id: gameId, moves });
 
@@ -51,4 +51,22 @@ test("pieceGlyph : glyphes pleins pour les blancs, contour pour les noirs", () =
 test("pieceGlyph : case vide ou inconnue -> chaîne vide", () => {
   assert.equal(pieceGlyph("."), "");
   assert.equal(pieceGlyph("x"), "");
+});
+
+test("escapeHtml : neutralise les payloads XSS classiques", () => {
+  assert.equal(escapeHtml('<img src=x onerror=alert(1)>'),
+    "&lt;img src=x onerror=alert(1)&gt;");
+  assert.equal(escapeHtml("<script>alert('XSS')</script>"),
+    "&lt;script&gt;alert(&#39;XSS&#39;)&lt;/script&gt;");
+  assert.equal(escapeHtml('" onmouseover="alert(1)'), "&quot; onmouseover=&quot;alert(1)");
+});
+
+test("escapeHtml : les noms normaux sont inchangés", () => {
+  assert.equal(escapeHtml("Nicolas"), "Nicolas");
+  assert.equal(escapeHtml("Agent IA"), "Agent IA");
+});
+
+test("escapeHtml : idempotent sur du texte déjà sûr", () => {
+  assert.equal(escapeHtml("a & b"), "a &amp; b");
+  assert.equal(escapeHtml(escapeHtml("<b>")), "&amp;lt;b&amp;gt;");
 });
