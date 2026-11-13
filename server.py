@@ -557,15 +557,20 @@ def try_puzzle_move(puzzle_id: str, move: str) -> dict:
 
 
 @mcp.tool()
-def analyze_game(game_id: str, depth: int = 15) -> dict:
+def analyze_game(game_id: str, depth: int = 15, publish: bool = True) -> dict:
     """Analyse une partie (ou un échiquier d'analyse) avec Stockfish.
 
     Retourne un PGN annoté compatible Lichess ([%eval ...], erreurs marquées)
     et la liste des coups critiques (imprécisions, erreurs, blunders).
 
+    Avec publish=True (défaut), l'analyse est aussi **publiée sur l'interface
+    web** : la page de la partie affiche la jauge d'évaluation et marque les
+    coups gaffés (blunder/erreur/imprécision) pour le debrief.
+
     Args:
         game_id: identifiant de la partie ou de l'échiquier d'analyse.
         depth: profondeur d'analyse Stockfish (1 à 30, défaut 15).
+        publish: publier l'analyse sur l'interface web (défaut True).
     """
     game = _get_game(game_id)
     moves = list(game["board"].move_stack)
@@ -573,6 +578,9 @@ def analyze_game(game_id: str, depth: int = 15) -> dict:
         raise ValueError("Aucun coup à analyser dans cette partie.")
     result = analyze_moves(moves, depth)
     result["game_id"] = game_id
+    if publish:
+        game["analysis"] = {"depth": depth, "evals": result["evals"]}
+        result["published"] = True
     return result
 
 
@@ -653,6 +661,7 @@ def _web_state(game_id: str, game: dict, your_color: str | None) -> dict:
         "moves": _san_history(board),
         "legal_moves_uci": [] if over or your_color is None else [m.uci() for m in board.legal_moves],
         "last_move": board.peek().uci() if board.move_stack else None,
+        "analysis": game.get("analysis"),
     }
 
 
@@ -683,6 +692,17 @@ async def web_util_js(request: Request) -> FileResponse:
             status_code=500,
         )
     return FileResponse(util, media_type="application/javascript")
+
+
+@mcp.custom_route("/pieces.js", methods=["GET"])
+async def web_pieces_js(request: Request) -> FileResponse:
+    pieces = WEB_DIR / "pieces.js"
+    if not pieces.is_file():
+        return JSONResponse(
+            {"error": "web/pieces.js est absent du déploiement (vérifiez le Dockerfile)"},
+            status_code=500,
+        )
+    return FileResponse(pieces, media_type="application/javascript")
 
 
 @mcp.custom_route("/web/api/games", methods=["POST"])

@@ -43,3 +43,20 @@ def test_util_js_route_served_without_auth(client, monkeypatch):
     monkeypatch.setenv("LICHESS_MCP_AUTH_TOKEN", "secret-token")
     r = client.get("/util.js")
     assert r.status_code == 200
+
+
+def test_pieces_js_route_served(client):
+    r = client.get("/pieces.js")
+    assert r.status_code == 200
+    assert "javascript" in r.headers.get("content-type", "")
+    assert "PIECE_SVG" in r.text
+    assert "wK" in r.text and "bP" in r.text
+
+
+def test_index_loads_pieces_js():
+    assert 'src="pieces.js"' in HTML
+
+
+def test_all_piece_svgs_embedded():
+    for p in ["wK","wQ","wR","wB","wN","wP","bK","bQ","bR","bB","bN","bP"]:
+        assert p in (REPO / "web" / "pieces.js").read_text(encoding="utf-8")

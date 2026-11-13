@@ -183,3 +183,29 @@ def test_stockfish_path_fallback_usrgames(monkeypatch):
 
     monkeypatch.setattr(analysis.os.path, "isfile", fake_isfile)
     assert analysis.stockfish_path() == "/usr/games/stockfish"
+
+
+@needs_stockfish
+def test_analyze_game_publishes_to_web():
+    gid = server.new_game(white="A", black="B")["game_id"]
+    for uci, color in (("f2f3", "white"), ("e7e5", "black"), ("g2g4", "white"), ("d8h4", "black")):
+        server.play_move(gid, uci, color=color)
+    r = server.analyze_game(gid, depth=10)
+    assert r["published"] is True
+    assert len(r["evals"]) == 4
+    assert all("eval_white" in e for e in r["evals"])
+    # perspective blancs : après le mat du berger, les blancs sont mats
+    assert r["evals"][-1]["eval_white"] <= -90000
+    # l'état web expose l'analyse
+    web = server._web_state(gid, server.GAMES[gid], None)
+    assert web["analysis"]["depth"] == 10
+    assert len(web["analysis"]["evals"]) == 4
+
+
+@needs_stockfish
+def test_analyze_game_no_publish():
+    gid = server.new_game(white="A", black="B")["game_id"]
+    server.play_move(gid, "e4", color="white")
+    r = server.analyze_game(gid, depth=8, publish=False)
+    assert "published" not in r
+    assert server.GAMES[gid].get("analysis") is None
