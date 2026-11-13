@@ -27,7 +27,7 @@ def test_dockerfile_copies_web_dir_and_puzzles():
 
 def test_web_page_loads_util_js():
     html = (REPO / "web" / "index.html").read_text(encoding="utf-8")
-    assert re.search(r'src="util\.js(\?v=\d+)?"', html), \
+    assert re.search(r'src="util\.js(\?v=[\w]+)?"', html), \
         "la page doit charger util.js (versionnée pour le cache-busting)"
 
 

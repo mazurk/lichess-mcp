@@ -20,9 +20,11 @@ from pathlib import Path
 import chess
 from fastmcp import FastMCP
 from fastmcp.server.auth import AccessToken, TokenVerifier
+import hashlib
+
 from starlette.concurrency import run_in_threadpool
 from starlette.requests import Request
-from starlette.responses import FileResponse, JSONResponse
+from starlette.responses import FileResponse, JSONResponse, Response
 
 from analysis import analyze_moves
 from engine import Engine
@@ -690,6 +692,26 @@ _SECURITY_HEADERS = {
 }
 
 
+_WEB_VERSION_CACHE: dict[str, str] = {}
+
+
+def _web_version() -> str:
+    """Empreinte du contenu des scripts web, calculée au premier accès.
+
+    Toute modification de util.js/pieces.js/app.js change l'empreinte, donc
+    l'URL versionnée (?v=...) référencée par la page : les navigateurs
+    rechargent automatiquement les scripts après un déploiement, sans
+    manipulation manuelle de version.
+    """
+    if "v" not in _WEB_VERSION_CACHE:
+        h = hashlib.sha256()
+        for name in ("util.js", "pieces.js", "app.js"):
+            path = WEB_DIR / name
+            h.update(path.read_bytes() if path.is_file() else name.encode())
+        _WEB_VERSION_CACHE["v"] = h.hexdigest()[:10]
+    return _WEB_VERSION_CACHE["v"]
+
+
 def _secure_file_response(path: Path, media_type: str | None = None,
                           cache_control: str = "no-cache") -> FileResponse:
     """Sert un fichier statique avec en-têtes de sécurité.
@@ -707,14 +729,19 @@ def _secure_file_response(path: Path, media_type: str | None = None,
 
 
 @mcp.custom_route("/", methods=["GET"])
-async def web_index(request: Request) -> FileResponse:
+async def web_index(request: Request) -> Response:
     index = WEB_DIR / "index.html"
     if not index.is_file():
         return JSONResponse(
             {"error": "web/index.html est absent du déploiement (vérifiez le Dockerfile)"},
             status_code=500,
         )
-    return _secure_file_response(index)
+    content = index.read_text(encoding="utf-8").replace("__BUILD__", _web_version())
+    headers = dict(_SECURITY_HEADERS)
+    headers["Cache-Control"] = "no-cache"
+    # ETag sur le contenu final : la revalidation navigateur est gratuite
+    headers["ETag"] = f'"{hashlib.sha256(content.encode()).hexdigest()[:16]}"'
+    return Response(content, media_type="text/html", headers=headers)
 
 
 @mcp.custom_route("/util.js", methods=["GET"])

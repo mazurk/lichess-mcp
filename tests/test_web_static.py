@@ -55,7 +55,7 @@ def test_pieces_js_route_served(client):
 
 def test_index_loads_pieces_js():
     import re as _re
-    assert _re.search(r'src="pieces\.js(\?v=\d+)?"', HTML)
+    assert _re.search(r'src="pieces\.js(\?v=[\w]+)?"', HTML)
 
 
 def test_all_piece_svgs_embedded():

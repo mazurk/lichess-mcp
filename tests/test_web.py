@@ -57,7 +57,7 @@ def test_index_serves_html(client):
     assert "lichess-mcp" in r.text
     assert "board" in r.text
     import re as _re
-    assert _re.search(r'src="util\.js(\?v=\d+)?"', r.text)
+    assert _re.search(r'src="util\.js(\?v=[\w]+)?"', r.text)
 
 
 def test_web_new_game_engine(client):
