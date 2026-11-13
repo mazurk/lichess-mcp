@@ -135,8 +135,17 @@
         <select id="gameId" style="flex:1 1 auto; min-width: 0;"></select>
         <button id="btnRefreshGames" title="Rafraîchir la liste des parties">↻</button>
       </div>
-      <label for="joinName">Votre nom</label>
-      <input id="joinName" value="Joueur">
+      <div id="joinNameWrap">
+        <label for="joinName">Votre nom</label>
+        <input id="joinName" value="Joueur">
+      </div>
+      <div id="viewColorWrap" style="display:none;">
+        <label for="viewColor">Perspective d'affichage</label>
+        <select id="viewColor">
+          <option value="white" selected>Vue des Blancs</option>
+          <option value="black">Vue des Noirs</option>
+        </select>
+      </div>
       <div id="joinColorWrap">
         <label for="joinColor">Rejoindre comme</label>
         <select id="joinColor">
