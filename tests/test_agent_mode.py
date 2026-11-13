@@ -2,7 +2,6 @@
 
 import shutil
 
-import chess
 import pytest
 
 import server

@@ -1,0 +1,15 @@
+# Linter Python (Ruff) — exécuté en local et dans la CI.
+# E/W : style pycodestyle, F : pyflakes (bugs réels),
+# B : bugbear (pièges courants), SIM : simplifications, PL : refactor pylint.
+line-length = 120
+
+[lint]
+select = ["E", "W", "F", "B", "SIM", "PL"]
+ignore = [
+  "PLR0913",  # trop d'arguments — les signatures d'outils MCP sont explicites par design
+  "PLR0912",  # trop de branches — le dispatch des commandes est naturellement long
+  "PLR0911",  # trop de returns — les outils à long-poll ont une sortie par état terminal
+  "PLR0917",  # trop d'arguments positionnels — idem PLR0913
+  "PLC0415",  # imports hors haut de fichier — lazy-import volontaire (chess.engine)
+  "PLR2004",  # valeurs magiques — seuils d'échecs explicites dans le code
+]

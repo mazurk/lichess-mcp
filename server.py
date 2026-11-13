@@ -24,7 +24,7 @@ from starlette.concurrency import run_in_threadpool
 from starlette.requests import Request
 from starlette.responses import FileResponse, JSONResponse
 
-from analysis import analyze_moves, stockfish_path
+from analysis import analyze_moves
 from engine import Engine
 
 
@@ -228,7 +228,7 @@ def new_analysis_board(fen: str | None = None) -> dict:
     try:
         board = chess.Board(fen) if fen else chess.Board()
     except ValueError as exc:
-        raise ValueError(f"FEN invalide : {exc}")
+        raise ValueError(f"FEN invalide : {exc}") from exc
     game_id = _create_game("Blancs", "Noirs", "medium", None,
                            kind="analysis", board=board)
     game = GAMES[game_id]
