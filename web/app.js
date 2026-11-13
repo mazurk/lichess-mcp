@@ -83,23 +83,33 @@ async function newGame() {
 async function joinGame() {
   const game_id = document.getElementById("gameId").value;
   if (!game_id) { setStatus("Créez une partie ou sélectionnez-en une dans la liste.", "err"); return; }
-  // Les modes Analyse et Dry-run sont en consultation : spectateur imposé.
-  const joinColor = (mode === "analysis" || mode === "dryrun")
-    ? "spectate" : document.getElementById("joinColor").value;
-  spectator = joinColor === "spectate";
-  const name = document.getElementById("joinName").value.trim() || "Joueur";
   try {
-    if (spectator) {
+    if (mode === "analysis") {
+      // Consultation d'une partie analysée : pas de nom, perspective au choix.
+      const viewColor = document.getElementById("viewColor").value;
+      spectator = true;
+      state = await api("/web/api/games/" + encodeURIComponent(game_id) + "?your_color=" + viewColor,
+        {method: "GET"});
+    } else if (mode === "dryrun") {
+      // Consultation d'un échiquier d'analyse : spectateur uniquement.
+      spectator = true;
       state = await api("/web/api/games/" + encodeURIComponent(game_id), {method: "GET"});
     } else {
-      state = await api("/web/api/games/" + encodeURIComponent(game_id) + "/join", {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({name, color: joinColor}),
-      });
-    }
-    if (!spectator) {
-      document.getElementById("yourName").value = name;
+      const joinColor = document.getElementById("joinColor").value;
+      spectator = joinColor === "spectate";
+      const name = document.getElementById("joinName").value.trim() || "Joueur";
+      if (spectator) {
+        state = await api("/web/api/games/" + encodeURIComponent(game_id), {method: "GET"});
+      } else {
+        state = await api("/web/api/games/" + encodeURIComponent(game_id) + "/join", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({name, color: joinColor}),
+        });
+      }
+      if (!spectator) {
+        document.getElementById("yourName").value = name;
+      }
     }
     afterState();
   } catch (e) { setStatus(e.message, "err"); }
@@ -446,6 +456,10 @@ function updateMode() {
   document.getElementById("mode-join").style.display = (mode === "create") ? "none" : "block";
   // le choix de couleur (joueur/spectateur) n'a de sens qu'en mode Rejoindre
   document.getElementById("joinColorWrap").style.display = (mode === "join") ? "block" : "none";
+  // le nom ne sert qu'à rejoindre en tant que joueur ; Analyse/Dry-run = consultation
+  document.getElementById("joinNameWrap").style.display = (mode === "join") ? "block" : "none";
+  // en mode Analyse, on choisit la perspective d'affichage à la place du nom
+  document.getElementById("viewColorWrap").style.display = (mode === "analysis") ? "block" : "none";
   document.getElementById("btnJoin").textContent = MODE_LABELS[mode] || "Rejoindre";
   document.getElementById("modeHint").textContent = MODE_HINTS[mode] || "";
   refreshGameList().catch(() => {});
