@@ -4,6 +4,7 @@ from pathlib import Path
 
 REPO = Path(__file__).parent.parent
 HTML = (REPO / "web" / "index.html").read_text(encoding="utf-8")
+APP_JS = (REPO / "web" / "app.js").read_text(encoding="utf-8")
 UTIL = (REPO / "web" / "util.js").read_text(encoding="utf-8")
 
 # Toutes les fonctions appelées par la page doivent être définies
@@ -12,16 +13,17 @@ UTIL = (REPO / "web" / "util.js").read_text(encoding="utf-8")
 PAGE_FUNCTIONS = [
     "setStatus", "setResult", "afterState", "render", "renderBoardLabels",
     "startPolling", "stopPolling", "refresh", "newGame", "joinGame",
-    "playMove", "onSquare", "sideName", "pieceGlyph", "isStaleResponse", "api",
+    "playMove", "onSquare", "sideName", "pieceGlyph", "isStaleResponse",
+    "escapeHtml", "api",
 ]
 
 
 def test_all_page_functions_defined():
     for fn in PAGE_FUNCTIONS:
         defined = (
-            f"function {fn}(" in HTML
-            or f"function {fn} (" in HTML
-            or f"const {fn} =" in HTML
+            f"function {fn}(" in APP_JS
+            or f"function {fn} (" in APP_JS
+            or f"const {fn} =" in APP_JS
             or f"function {fn}(" in UTIL
         )
         assert defined, (
@@ -58,3 +60,15 @@ def test_index_loads_pieces_js():
 def test_all_piece_svgs_embedded():
     for p in ["wK","wQ","wR","wB","wN","wP","bK","bQ","bR","bB","bN","bP"]:
         assert p in (REPO / "web" / "pieces.js").read_text(encoding="utf-8")
+
+
+def test_app_js_route_served(client):
+    r = client.get("/app.js")
+    assert r.status_code == 200
+    assert "javascript" in r.headers.get("content-type", "")
+    assert "function render(" in r.text
+
+
+def test_index_has_no_inline_script():
+    # CSP strict (script-src 'self') : le script doit être externe
+    assert "<script>\n" not in HTML and "<script>\"" not in HTML

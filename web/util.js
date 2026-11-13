@@ -22,6 +22,19 @@ function pieceGlyph(p) {
   return solid[p] || outline[p] || "";
 }
 
+
+
+function escapeHtml(s) {
+  // Échappe les caractères dangereux pour toute injection en innerHTML
+  // (noms de joueurs contrôlés par l'utilisateur → prévention XSS).
+  return String(s)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll("\"", "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
 if (typeof module !== "undefined") {
-  module.exports = { isStaleResponse, pieceGlyph };
+  module.exports = { isStaleResponse, pieceGlyph, escapeHtml };
 }

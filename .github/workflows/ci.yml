@@ -29,6 +29,10 @@ jobs:
         run: pytest tests/ -v
       - name: Tests web (Node)
         run: node --test tests/web/util.test.mjs
+      - name: Linter JS (ESLint)
+        run: |
+          npm ci
+          npx eslint web/util.js tests/web/util.test.mjs eslint.config.mjs
       - name: Vérifier que le serveur démarre
         run: |
           timeout 60 python - <<'EOF'
