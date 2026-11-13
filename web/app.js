@@ -279,14 +279,9 @@ function renderGameStatus() {
   if (back) back.onclick = (e) => { e.preventDefault(); navLast(); };
 }
 
-function evalWhiteToPct(evalWhite) {
-  // Conversion centipions (perspective blancs) en hauteur de barre (0-100 %).
-  // Les mats sont ramenés aux bornes.
-  const cp = Math.max(-1500, Math.min(1500, evalWhite));
-  return 50 + (cp / 1500) * 50;
-}
-
 function renderEvalChart() {
+  // Courbe d'avantage façon Lichess : SVG, avantage blancs vers le haut,
+  // marqueurs colorés sur les coups gaffés, survol = coup + évaluation.
   const chart = document.getElementById("evalchart");
   const legend = document.getElementById("evallegend");
   const analysis = state && state.analysis;
@@ -296,30 +291,52 @@ function renderEvalChart() {
     legend.style.display = "none";
     return;
   }
-  chart.style.display = "flex";
+  const evals = analysis.evals;
+  chart.style.display = "block";
   legend.style.display = "block";
-  chart.innerHTML = "";
-  for (const e of analysis.evals) {
-    const bar = document.createElement("div");
-    bar.className = "evalbar" + (e.label === "blunder" ? " crit" : "");
-    const pct = evalWhiteToPct(e.eval_white);
-    const whitePart = document.createElement("div");
-    whitePart.className = "white-adv";
-    whitePart.style.height = pct + "%";
-    const blackPart = document.createElement("div");
-    blackPart.className = "black-adv";
-    blackPart.style.height = (100 - pct) + "%";
-    bar.appendChild(whitePart);
-    bar.appendChild(blackPart);
-    bar.title = "Coup " + e.move_number + " " + e.san
+
+  const W = 320, H = 80, PAD = 4;
+  const mid = H / 2;
+  const maxAbs = 800; // ±8 pions, au-delà la courbe est écrasée aux bornes
+  const x = (i) => (evals.length === 1 ? W / 2 : PAD + (i / (evals.length - 1)) * (W - 2 * PAD));
+  const y = (v) => {
+    const cl = Math.max(-maxAbs, Math.min(maxAbs, v));
+    return mid - (cl / maxAbs) * (mid - PAD);
+  };
+  const pts = evals.map((e, i) => x(i).toFixed(1) + "," + y(e.eval_white).toFixed(1));
+  const area = "M" + PAD + "," + mid
+    + " L" + pts.join(" L") + " L" + (W - PAD).toFixed(1) + "," + mid + " Z";
+
+  const LABEL_COLORS = { blunder: "#d34f5a", mistake: "#e8a33d", inaccuracy: "#d7c14a" };
+  let dots = "";
+  let hovers = "";
+  for (let i = 0; i < evals.length; i++) {
+    const e = evals[i];
+    const cx = x(i).toFixed(1), cy = y(e.eval_white).toFixed(1);
+    const tip = "Coup " + e.move_number + " " + e.san
       + (e.label ? " (« " + e.label + " »)" : "")
       + " — éval. " + evalWhiteToText(e.eval_white);
-    chart.appendChild(bar);
+    if (e.label) {
+      dots += '<circle class="ev-dot" cx="' + cx + '" cy="' + cy
+        + '" r="3.2" fill="' + (LABEL_COLORS[e.label] || "#fff") + '" stroke="#262421" stroke-width="0.8"/>';
+    }
+    hovers += '<circle cx="' + cx + '" cy="' + cy + '" r="9" fill="transparent">'
+      + "<title>" + escapeHtml(tip) + "</title></circle>";
   }
-  const last = analysis.evals[analysis.evals.length - 1];
+
+  chart.innerHTML = '<svg viewBox="0 0 ' + W + " " + H + '" preserveAspectRatio="none" role="img" '
+    + 'aria-label="Courbe d\'avantage de la partie">'
+    + '<line x1="' + PAD + '" y1="' + mid + '" x2="' + (W - PAD) + '" y2="' + mid
+    + '" stroke="#4d4b47" stroke-width="0.6" stroke-dasharray="2,3"/>'
+    + '<path d="' + area + '" fill="rgba(140,166,76,0.18)"/>'
+    + '<polyline points="' + pts.join(" ") + '" fill="none" stroke="#8ca64c" stroke-width="1.6"'
+    + ' stroke-linejoin="round" stroke-linecap="round"/>'
+    + dots + hovers + "</svg>";
+
+  const last = evals[evals.length - 1];
   legend.innerHTML = "Analyse Stockfish (profondeur " + analysis.depth + ") — "
     + "dernière éval. : <b>" + evalWhiteToText(last.eval_white) + "</b> — "
-    + "<span class='blunder'>■</span> blunder <span class='mistake'>■</span> erreur <span class='inaccuracy'>■</span> imprécision";
+    + "<span class='blunder'>●</span> blunder <span class='mistake'>●</span> erreur <span class='inaccuracy'>●</span> imprécision";
 }
 
 function renderBoardLabels() {
