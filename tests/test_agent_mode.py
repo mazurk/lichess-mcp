@@ -208,3 +208,18 @@ def test_analyze_game_no_publish():
     r = server.analyze_game(gid, depth=8, publish=False)
     assert "published" not in r
     assert server.GAMES[gid].get("analysis") is None
+
+
+@needs_stockfish
+def test_analysis_provides_pv():
+    """La PV Stockfish (ligne principale) est exposée pour chaque coup."""
+    gid = server.new_game(white="A", black="B")["game_id"]
+    server.play_move(gid, "e4", color="white")
+    server.play_move(gid, "d5", color="black")
+    r = server.analyze_game(gid, depth=10)
+    for e in r["evals"]:
+        assert "pv_san" in e
+        assert isinstance(e["pv_san"], list)
+        assert len(e["pv_san"]) >= 2, "la PV doit contenir une continuation"
+    # la PV du premier coup démarre par un coup légal SAN connu
+    assert r["evals"][0]["pv_san"][0] in ("e4", "d4", "Nf3", "c4")

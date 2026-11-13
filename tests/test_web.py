@@ -240,3 +240,42 @@ def test_web_state_exposes_turn(client):
     server.GAMES[gid]["board"].push_uci("e2e4")
     r = client.get(f"/web/api/games/{gid}?your_color=white")
     assert r.json()["turn"] == "black"
+
+
+def test_web_state_history_for_navigation(client):
+    """Navigation web : chaque coup expose san, uci et fen de la position résultante."""
+    gid = server.new_game(white="A", black="B")["game_id"]
+    server.play_move(gid, "e4", color="white")
+    server.play_move(gid, "e5", color="black")
+    r = client.get(f"/web/api/games/{gid}")
+    state = r.json()
+    assert state["history"][0]["san"] == "e4"
+    assert state["history"][0]["uci"] == "e2e4"
+    assert "4P3" in state["history"][0]["fen"]  # pawn blanc en e4
+    assert state["history"][1]["san"] == "e5"
+
+
+def test_web_state_status_fields(client):
+    gid = server.new_game(white="A", black="B")["game_id"]
+    state = client.get(f"/web/api/games/{gid}").json()
+    assert state["status"] == "en cours"
+    assert state["analysed"] is False
+    for uci in ("f2f3", "e7e5", "g2g4", "d8h4"):
+        side = "white" if uci[0] in "fg" else "black"
+        server.GAMES[gid]["board"].push_uci(uci)
+    state = client.get(f"/web/api/games/{gid}").json()
+    assert state["status"] == "terminée"
+
+
+def test_web_games_list_endpoint(client):
+    gid1 = server.new_game(white="Alice", black="Bob")["game_id"]
+    gid2 = server.new_game(engine_color="black")["game_id"]
+    r = client.get("/web/api/games")
+    assert r.status_code == 200
+    games = {g["game_id"]: g for g in r.json()["games"]}
+    assert gid1 in games and gid2 in games
+    g1 = games[gid1]
+    assert g1["white_name"] == "Alice"
+    assert g1["status"] == "en cours"
+    assert g1["analysed"] is False
+    assert g1["plies"] == 0
