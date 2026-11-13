@@ -35,6 +35,8 @@ export default [
         encodeURIComponent: "readonly",
         // fonctions chargées par les autres balises <script> (util.js, pieces.js)
         escapeHtml: "readonly",
+        fenToGrid: "readonly",
+        evalWhiteToText: "readonly",
         isStaleResponse: "readonly",
         pieceGlyph: "readonly",
         pieceImgSrc: "readonly",

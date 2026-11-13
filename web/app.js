@@ -1,6 +1,9 @@
 "use strict";
 const FILES = "abcdefgh";
 let state = null, selected = null, pollTimer = null, spectator = false;
+// Navigation dans l'historique : null = position en direct (dernier coup),
+// sinon index du coup affiché (0 = position après le 1er coup).
+let viewPly = null;
 
 const statusEl = document.getElementById("status");
 const resultEl = document.getElementById("result");
@@ -59,13 +62,13 @@ async function newGame() {
     body: JSON.stringify(payload),
   });
   spectator = false;
-  document.getElementById("gameId").value = state.game_id;
+  // la liste sera rafraîchie par refreshGameList() (le champ est un <select>)
   afterState();
 }
 
 async function joinGame() {
-  const game_id = document.getElementById("gameId").value.trim();
-  if (!game_id) { setStatus("Entrez un identifiant de partie.", "err"); return; }
+  const game_id = document.getElementById("gameId").value;
+  if (!game_id) { setStatus("Créez une partie ou sélectionnez-en une dans la liste.", "err"); return; }
   const joinColor = document.getElementById("joinColor").value;
   spectator = joinColor === "spectate";
   const name = document.getElementById("joinName").value.trim() || "Joueur";
@@ -130,6 +133,13 @@ async function refresh() {
   } catch (e) { if (String(e.message).includes("404")) { stopPolling(); } }
 }
 
+function isLive() {
+  // En direct si aucune navigation, ou position du dernier coup atteinte.
+  if (viewPly === null) return true;
+  const hist = state && state.history ? state.history : [];
+  return viewPly >= hist.length - 1;
+}
+
 function render() {
   const boardEl = document.getElementById("board");
   boardEl.innerHTML = "";
@@ -137,18 +147,29 @@ function render() {
   const myWhite = state.your_color !== "black";
   const rows = myWhite ? [8,7,6,5,4,3,2,1] : [1,2,3,4,5,6,7,8];
   const cols = myWhite ? FILES.split("") : FILES.split("").reverse();
-  const legal = state.legal_moves_uci || [];
+  // Position affichée : historique navigué ou position en direct.
+  const hist = state.history || [];
+  let grid, lastMove, legal;
+  if (viewPly !== null && viewPly < hist.length - 1) {
+    grid = fenToGrid(hist[viewPly].fen);
+    lastMove = hist[viewPly].uci;
+    legal = [];
+  } else {
+    grid = state.board;
+    lastMove = state.last_move;
+    legal = state.legal_moves_uci || [];
+  }
   const targetsFrom = selected ? legal.filter(m => m.slice(0,2) === selected) : [];
   for (const r of rows) {
     for (const f of cols) {
       const sq = f + r;
       const div = document.createElement("div");
       const fileIdx = FILES.indexOf(f), rankIdx = r - 1;
-      const piece = state.board[7 - rankIdx][fileIdx];
+      const piece = grid[7 - rankIdx][fileIdx];
       div.className = "sq " + ((fileIdx + rankIdx) % 2 === 0 ? "light" : "dark");
       if (sq === selected) div.classList.add("sel");
       if (targetsFrom.some(m => m.slice(2,4) === sq)) div.classList.add("target");
-      if (state.last_move && (sq === state.last_move.slice(0,2) || sq === state.last_move.slice(2,4))) div.classList.add("last");
+      if (lastMove && (sq === lastMove.slice(0,2) || sq === lastMove.slice(2,4))) div.classList.add("last");
       if (piece !== ".") {
         const img = document.createElement("img");
         img.className = "piece";
@@ -166,28 +187,96 @@ function render() {
       boardEl.appendChild(div);
     }
   }
-  const analysis = state.analysis;
-  const info = (i) => {
-    if (!analysis || !analysis.evals || !analysis.evals[i]) return "";
-    const e = analysis.evals[i];
-    const label = e.label ? " " + e.label : "";
-    const best = e.best_move && e.label ? '" title="Meilleur coup : ' + e.best_move + '"' : "";
-    return {cls: e.label || "", title: best, label};
-  };
-  movesEl.innerHTML = state.moves.length
-    ? state.moves.map((m, i) => {
-        if (i % 2 === 0) {
-          const blackMove = state.moves[i + 1];
-          const wi = info(i), bi = info(i + 1);
-          return '<span class="num">' + (i/2+1) + '.</span>'
-            + '<span class="mv-w ' + wi.cls + '"' + (wi.title || "") + '>' + m + '</span>'
-            + '<span class="mv-b ' + bi.cls + '"' + (bi.title || "") + '>' + (blackMove || "") + '</span>';
-        }
-        return "";
-      }).join("")
-    : "<i>Aucun coup joué.</i>";
+  renderMoves();
   renderEvalChart();
   renderBoardLabels();
+  renderGameStatus();
+}
+
+function moveInfo(i) {
+  // Étiquette d'analyse + info-bulle (éval, meilleur coup, PV) pour le coup i.
+  const analysis = state && state.analysis;
+  if (!analysis || !analysis.evals || !analysis.evals[i]) return {cls: "", title: "", evalv: ""};
+  const e = analysis.evals[i];
+  let title = "Coup " + e.move_number + " " + e.san + " — éval. " + evalWhiteToText(e.eval_white);
+  if (e.label) title += " (« " + e.label + " »)";
+  if (e.pv_san && e.pv_san.length) {
+    title += "\nVariante Stockfish : " + e.pv_san.join(" ");
+  } else if (e.best_move) {
+    title += "\nMeilleur coup : " + e.best_move;
+  }
+  return {
+    cls: e.label || "",
+    title: ' title="' + escapeHtml(title) + '"',
+    evalv: ' <span class="evalv">' + evalWhiteToText(e.eval_white) + "</span>",
+  };
+}
+
+function renderMoves() {
+  if (!state.moves.length) {
+    movesEl.innerHTML = "<i>Aucun coup joué.</i>";
+    return;
+  }
+  const current = (viewPly === null || isLive()) ? state.moves.length - 1 : viewPly;
+  const moveHtml = (i) => {
+    const m = state.moves[i];
+    const inf = moveInfo(i);
+    return '<span class="mv' + (i === current ? " cur" : "") + " " + inf.cls
+      + '" data-ply="' + i + '"' + inf.title + '>'
+      + m + inf.evalv + "</span>";
+  };
+  let html = "";
+  for (let i = 0; i < state.moves.length; i += 2) {
+    html += '<span class="num">' + (i/2+1) + '.</span>'
+      + '<span class="mvcell">' + moveHtml(i) + "</span>"
+      + '<span class="mvcell">' + (i + 1 < state.moves.length ? moveHtml(i + 1) : "") + "</span>";
+  }
+  movesEl.innerHTML = html;
+  movesEl.querySelectorAll(".mv").forEach((el) => {
+    el.onclick = () => setView(Number(el.dataset.ply));
+  });
+}
+
+function setView(ply) {
+  // Navigation dans l'historique ; le dernier coup revient en direct.
+  const hist = state.history || [];
+  if (ply === null || ply >= hist.length - 1) {
+    viewPly = null;
+  } else {
+    viewPly = Math.max(0, Math.min(ply, hist.length - 1));
+  }
+  selected = null;
+  render();
+}
+
+function navFirst() { if (state && state.history && state.history.length) setView(0); }
+function navPrev() { if (state && state.history && state.history.length) setView((viewPly === null ? state.history.length - 1 : viewPly) - 1); }
+function navNext() { if (state && state.history && state.history.length) setView(viewPly === null ? null : viewPly + 1); }
+function navLast() { setView(null); }
+
+document.addEventListener("keydown", (ev) => {
+  if (!state || ev.target.tagName === "INPUT" || ev.target.tagName === "SELECT") return;
+  if (ev.key === "ArrowLeft") { navPrev(); ev.preventDefault(); }
+  else if (ev.key === "ArrowRight") { navNext(); ev.preventDefault(); }
+});
+
+function renderGameStatus() {
+  const el = document.getElementById("gameStatus");
+  if (!state) { el.innerHTML = ""; return; }
+  const badge = state.over ? "terminée" : "en cours";
+  const cls = state.over ? "over" : "live";
+  let html = '<span class="badge ' + cls + '">' + (state.over ? "" : "● ") + badge + "</span>";
+  if (state.analysed && state.analysis) {
+    html += ' <span class="badge analysed">analysée (prof. ' + state.analysis.depth + ")</span>";
+  }
+  if (viewPly !== null && !isLive()) {
+    html += ' <span class="badge browsing">relecture : coup '
+      + (viewPly + 1) + "/" + state.history.length
+      + ' — <a href="#" id="backLive">retour au direct</a></span>';
+  }
+  el.innerHTML = html;
+  const back = document.getElementById("backLive");
+  if (back) back.onclick = (e) => { e.preventDefault(); navLast(); };
 }
 
 function evalWhiteToPct(evalWhite) {
@@ -195,12 +284,6 @@ function evalWhiteToPct(evalWhite) {
   // Les mats sont ramenés aux bornes.
   const cp = Math.max(-1500, Math.min(1500, evalWhite));
   return 50 + (cp / 1500) * 50;
-}
-
-function evalWhiteToText(evalWhite) {
-  if (evalWhite >= 90000) return "M" + Math.max(1, Math.round((100000 - evalWhite) / 100));
-  if (evalWhite <= -90000) return "-M" + Math.max(1, Math.round((100000 + evalWhite) / 100));
-  return (evalWhite / 100).toFixed(1);
 }
 
 function renderEvalChart() {
@@ -273,6 +356,7 @@ function renderBoardLabels() {
 function onSquare(sq) {
   if (!state || state.over || spectator || state.your_color === null) return;
   if (!state.your_turn) return;
+  if (!isLive()) { setStatus("Relecture : revenez au dernier coup pour jouer.", "err"); return; }
   const legal = state.legal_moves_uci || [];
   if (selected) {
     const candidates = legal.filter(m => m.slice(0,2) === selected && m.slice(2,4) === sq);
@@ -313,5 +397,38 @@ async function playMove(uci) {
   }
 }
 
-document.getElementById("btnNew").onclick = () => newGame().catch(e => setStatus(e.message, "err"));
+document.getElementById("btnNew").onclick = () => newGame().then(refreshGameList).catch(e => setStatus(e.message, "err"));
 document.getElementById("btnJoin").onclick = joinGame;
+document.getElementById("btnFirst").onclick = navFirst;
+document.getElementById("btnPrev").onclick = navPrev;
+document.getElementById("btnNext").onclick = navNext;
+document.getElementById("btnLast").onclick = navLast;
+document.getElementById("btnRefreshGames").onclick = () => refreshGameList().catch(e => setStatus(e.message, "err"));
+
+async function refreshGameList() {
+  // Liste déroulante des parties du serveur : id, joueurs, coups, statut.
+  const data = await api("/web/api/games", {method: "GET"});
+  const select = document.getElementById("gameId");
+  const previous = select.value;
+  select.innerHTML = "";
+  if (!data.games.length) {
+    const opt = document.createElement("option");
+    opt.value = "";
+    opt.textContent = "Aucune partie sur le serveur";
+    select.appendChild(opt);
+    return;
+  }
+  for (const g of data.games) {
+    const opt = document.createElement("option");
+    opt.value = g.game_id;
+    const label = g.game_id + " — " + g.white_name + " vs " + g.black_name
+      + " · " + g.plies + " coups · " + g.status
+      + (g.analysed ? " · analysée" : "");
+    opt.textContent = label;
+    select.appendChild(opt);
+  }
+  if (previous && data.games.some(g => g.game_id === previous)) {
+    select.value = previous;
+  }
+}
+refreshGameList().catch(() => {});

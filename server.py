@@ -625,6 +625,29 @@ def _san_history(board: chess.Board) -> list[str]:
     return history
 
 
+def _full_history(board: chess.Board) -> list[dict]:
+    """Historique complet pour la navigation web : pour chaque coup, son SAN,
+    son UCI et le FEN de la position qui en résulte."""
+    replay = chess.Board()
+    history = []
+    for move in board.move_stack:
+        entry = {
+            "san": replay.san(move),
+            "uci": move.uci(),
+        }
+        replay.push(move)
+        entry["fen"] = replay.fen()
+        history.append(entry)
+    return history
+
+
+def _game_status(game: dict) -> str:
+    """Statut lisible d'une partie : en cours / terminée / analysée."""
+    if game["resigned"] or game["board"].is_game_over():
+        return "terminée"
+    return "en cours"
+
+
 def _web_state(game_id: str, game: dict, your_color: str | None) -> dict:
     board = game["board"]
     over = game["resigned"] or board.is_game_over()
@@ -662,6 +685,9 @@ def _web_state(game_id: str, game: dict, your_color: str | None) -> dict:
         "over": over,
         "result": result,
         "moves": _san_history(board),
+        "history": _full_history(board),
+        "status": _game_status(game),
+        "analysed": game.get("analysis") is not None,
         "legal_moves_uci": [] if over or your_color is None else [m.uci() for m in board.legal_moves],
         "last_move": board.peek().uci() if board.move_stack else None,
         "analysis": game.get("analysis"),
@@ -779,6 +805,30 @@ async def web_pieces_js(request: Request) -> FileResponse:
         )
     return _secure_file_response(pieces, "application/javascript",
                                  cache_control="public, max-age=31536000, immutable")
+
+
+@mcp.custom_route("/web/api/games", methods=["GET"])
+async def web_list_games(request: Request) -> JSONResponse:
+    """Liste des parties du serveur (menu déroulant de l'interface web)."""
+    if not _web_authorized(request):
+        return JSONResponse({"error": "non autorisé"}, status_code=401)
+    games = []
+    for game_id, game in GAMES.items():
+        board = game["board"]
+        analysis = game.get("analysis")
+        games.append({
+            "game_id": game_id,
+            "white_name": game["white_name"],
+            "black_name": game["black_name"],
+            "engine_color": game["engine_color"],
+            "kind": game["kind"],
+            "plies": len(board.move_stack),
+            "status": _game_status(game),
+            "analysed": analysis is not None,
+            "analysis_depth": analysis["depth"] if analysis else None,
+        })
+    games.sort(key=lambda g: g["game_id"])
+    return JSONResponse({"games": games})
 
 
 @mcp.custom_route("/web/api/games", methods=["POST"])

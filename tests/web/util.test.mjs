@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { isStaleResponse, pieceGlyph, escapeHtml } from "../../web/util.js";
+import { isStaleResponse, pieceGlyph, escapeHtml, fenToGrid, evalWhiteToText } from "../../web/util.js";
 
 const state = (gameId, moves) => ({ game_id: gameId, moves });
 
@@ -69,4 +69,27 @@ test("escapeHtml : les noms normaux sont inchangés", () => {
 test("escapeHtml : idempotent sur du texte déjà sûr", () => {
   assert.equal(escapeHtml("a & b"), "a &amp; b");
   assert.equal(escapeHtml(escapeHtml("<b>")), "&amp;lt;b&amp;gt;");
+});
+
+test("fenToGrid : position initiale", () => {
+  const grid = fenToGrid("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+  assert.equal(grid.length, 8);
+  assert.equal(grid[0][0], "r");
+  assert.equal(grid[0][4], "k");
+  assert.equal(grid[7][4], "K");
+  assert.equal(grid[4][4], ".");
+});
+
+test("fenToGrid : cases vides compactées", () => {
+  const grid = fenToGrid("8/8/8/3p4/8/8/8/8 w - - 0 1");
+  assert.equal(grid[3][3], "p");
+  assert.equal(grid[3].filter((c) => c === ".").length, 7);
+});
+
+test("evalWhiteToText : centipions et mats", () => {
+  assert.equal(evalWhiteToText(120), "+1.2");
+  assert.equal(evalWhiteToText(-80), "-0.8");
+  assert.equal(evalWhiteToText(0), "0.0");
+  assert.equal(evalWhiteToText(99900), "M1");
+  assert.equal(evalWhiteToText(-99900), "-M1");
 });

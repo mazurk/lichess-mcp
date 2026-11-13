@@ -58,6 +58,22 @@
   .evalbar.crit { outline: 1px solid var(--blunder); }
   .evallegend { font-size: 11px; color: #888; margin-top: 4px; }
   .evallegend b { color: #ddd; }
+  #gameStatus { min-height: 20px; font-size: 12px; margin-bottom: 6px; }
+  .badge { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 11px;
+           background: #3d3a37; color: #ddd; margin-right: 4px; }
+  .badge.live { color: #8ca64c; }
+  .badge.over { color: #d34f5a; }
+  .badge.analysed { color: #7fb0d8; }
+  .badge.browsing { color: #e8a33d; }
+  .badge a { color: #e8a33d; }
+  .navbtns { display: flex; gap: 4px; margin-bottom: 6px; }
+  .navbtns button { padding: 4px 10px; }
+  #moves .mv { cursor: pointer; border-radius: 3px; padding-left: 3px; padding-right: 2px; }
+  #moves .mv:hover { background: #4a4744; }
+  #moves .mv.cur { background: #5a6b3a; color: #fff; }
+  #moves .mvcell { padding-right: 6px; }
+  #moves .evalv { color: #8ca64c; font-size: 11px; margin-left: 2px; }
+  #moves .mv.cur .evalv { color: #d7e2b0; }
   .board-wrap { display: flex; flex-direction: column; gap: 6px; }
   .board-label { font-size: 14px; color: #ddd; padding: 0 2px; display: flex; justify-content: space-between; }
   .board-label .seat { color: #8a8a8a; font-size: 12px; }
@@ -106,8 +122,11 @@
     </div>
     <div class="card">
       <h1>Rejoindre une partie</h1>
-      <label for="gameId">Identifiant de partie</label>
-      <input id="gameId" placeholder="ex. a1b2c3d4">
+      <label for="gameId">Partie du serveur</label>
+      <div style="display:flex; gap:6px;">
+        <select id="gameId" style="flex:1;"></select>
+        <button id="btnRefreshGames" title="Rafraîchir la liste des parties">↻</button>
+      </div>
       <label for="joinName">Votre nom</label>
       <input id="joinName" value="Joueur">
       <label for="joinColor">Rejoindre comme</label>
@@ -123,6 +142,13 @@
     </div>
     <div class="card">
       <h1>Coups</h1>
+      <div id="gameStatus"></div>
+      <div class="navbtns">
+        <button id="btnFirst" title="Premier coup">⏮</button>
+        <button id="btnPrev" title="Coup précédent (←)">◀</button>
+        <button id="btnNext" title="Coup suivant (→)">▶</button>
+        <button id="btnLast" title="Dernier coup / direct">⏭</button>
+      </div>
       <div id="moves"><i>Aucune partie en cours.</i></div>
       <div id="evalchart" class="evalchart" style="display:none;"></div>
       <div id="evallegend" class="evallegend" style="display:none;"></div>

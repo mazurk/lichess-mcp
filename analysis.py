@@ -69,6 +69,19 @@ def _eval_str(score: int) -> str:
     return f"{score / 100:.2f}"
 
 
+def _pv_to_san(board: chess.Board, pv: list[chess.Move], max_plies: int = 6) -> list[str]:
+    """Convertit la ligne principale Stockfish en SAN (continuation recommandée)."""
+    pv_san = []
+    pv_board = board.copy(stack=False)
+    for pv_move in pv[:max_plies]:
+        try:
+            pv_san.append(pv_board.san(pv_move))
+            pv_board.push(pv_move)
+        except ValueError:
+            break
+    return pv_san
+
+
 def analyze_moves(moves: list[chess.Move], depth: int = 15) -> dict:
     """Analyse une séquence de coups depuis la position initiale.
 
@@ -97,6 +110,7 @@ def analyze_moves(moves: list[chess.Move], depth: int = 15) -> dict:
             score_before = _pov_score_cp(info, mover)
             pv = info.get("pv") or []
             best_san = board.san(pv[0]) if pv else None
+            pv_san = _pv_to_san(board, pv)
             san = board.san(move)
             board.push(move)
 
@@ -141,6 +155,7 @@ def analyze_moves(moves: list[chess.Move], depth: int = 15) -> dict:
                 "eval_white": score_white,
                 "label": label,
                 "best_move": best_san if label else None,
+                "pv_san": pv_san,
             })
 
     return {
