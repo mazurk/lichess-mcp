@@ -223,3 +223,32 @@ def test_analysis_provides_pv():
         assert len(e["pv_san"]) >= 2, "la PV doit contenir une continuation"
     # la PV du premier coup démarre par un coup légal SAN connu
     assert r["evals"][0]["pv_san"][0] in ("e4", "d4", "Nf3", "c4")
+
+
+def test_get_board_navigation():
+    """L'agent peut rejouer les positions passées comme l'interface web."""
+    gid = server.new_game(white="A", black="B")["game_id"]
+    server.play_move(gid, "e4", color="white")
+    server.play_move(gid, "e5", color="black")
+    server.play_move(gid, "Nf3", color="white")
+
+    # position initiale
+    r0 = server.get_board(gid, ply=0)
+    assert r0["ply"] == 0 and r0["total_moves"] == 3
+    assert "rnbqkbnr/pppppppp" in r0["fen"]
+    assert "Prochain coup joué : e4" in r0["note"]
+
+    # après le 2e coup (e4 e5) : trait aux blancs, pas de cavalier en f3
+    r2 = server.get_board(gid, ply=2)
+    assert r2["ply"] == 2
+    assert r2["turn"] == "white"  # trait de la position rejouée
+    assert "5N2" not in r2["fen"]  # pas de cavalier blanc en f3
+    assert "rnbqkbnr" in r2["fen"]  # pièces noires intactes
+
+    # défaut = position actuelle ; bornes refusées
+    r_now = server.get_board(gid)
+    assert r_now["ply"] == 3 and "note" not in r_now
+    with pytest.raises(ValueError, match="entre 0 et 3"):
+        server.get_board(gid, ply=4)
+    with pytest.raises(ValueError, match="entre 0 et 3"):
+        server.get_board(gid, ply=-1)
