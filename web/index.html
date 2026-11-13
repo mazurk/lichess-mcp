@@ -27,7 +27,9 @@
   .sq.last { box-shadow: inset 0 0 0 3px rgba(255,255,100,.7); }
   .piece { width: 52px; height: 52px; display: block; margin: auto; pointer-events: none; }
   .board { border: 4px solid #4a3f35; }
-  .sq .coord { position: absolute; font-size: 10px; opacity: .6; }
+  .sq .coord { position: absolute; font-size: 11px; font-weight: 700; }
+  .sq.light .coord { color: var(--dark); }
+  .sq.dark .coord { color: var(--light); }
   .sq .coord.f { right: 3px; bottom: 1px; } .sq .coord.r { left: 3px; top: 1px; }
   .side { width: 300px; display: flex; flex-direction: column; gap: 12px; }
   .card { background: var(--panel); border-radius: 8px; padding: 14px; }
@@ -126,9 +128,9 @@
     </div>
   </div>
 </div>
-<script src="util.js"></script>
-<script src="pieces.js"></script>
-<script src="app.js"></script>
+<script src="util.js?v=2"></script>
+<script src="pieces.js?v=2"></script>
+<script src="app.js?v=2"></script>
 
 </body>
 </html>

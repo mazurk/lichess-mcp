@@ -56,7 +56,8 @@ def test_index_serves_html(client):
     assert r.status_code == 200
     assert "lichess-mcp" in r.text
     assert "board" in r.text
-    assert 'src="util.js"' in r.text
+    import re as _re
+    assert _re.search(r'src="util\.js(\?v=\d+)?"', r.text)
 
 
 def test_web_new_game_engine(client):
