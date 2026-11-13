@@ -690,8 +690,20 @@ _SECURITY_HEADERS = {
 }
 
 
-def _secure_file_response(path: Path, media_type: str | None = None) -> FileResponse:
-    return FileResponse(path, media_type=media_type, headers=_SECURITY_HEADERS)
+def _secure_file_response(path: Path, media_type: str | None = None,
+                          cache_control: str = "no-cache") -> FileResponse:
+    """Sert un fichier statique avec en-têtes de sécurité.
+
+    Par défaut `Cache-Control: no-cache` : le navigateur doit revalider à
+    chaque chargement (l'ETag rend la revalidation gratuite) — sans ça, le
+    navigateur peut garder en cache une ancienne version de la page pendant
+    des jours après un déploiement (cache heuristique). Les scripts JS sont
+    référencés versionnés (?v=N) dans la page : ils peuvent être cachés
+    longtemps sans risque.
+    """
+    headers = dict(_SECURITY_HEADERS)
+    headers["Cache-Control"] = cache_control
+    return FileResponse(path, media_type=media_type, headers=headers)
 
 
 @mcp.custom_route("/", methods=["GET"])
@@ -713,7 +725,8 @@ async def web_util_js(request: Request) -> FileResponse:
             {"error": "web/util.js est absent du déploiement (vérifiez le Dockerfile)"},
             status_code=500,
         )
-    return _secure_file_response(util, "application/javascript")
+    return _secure_file_response(util, "application/javascript",
+                                 cache_control="public, max-age=31536000, immutable")
 
 
 @mcp.custom_route("/app.js", methods=["GET"])
@@ -724,7 +737,8 @@ async def web_app_js(request: Request) -> FileResponse:
             {"error": "web/app.js est absent du déploiement (vérifiez le Dockerfile)"},
             status_code=500,
         )
-    return _secure_file_response(app, "application/javascript")
+    return _secure_file_response(app, "application/javascript",
+                                 cache_control="public, max-age=31536000, immutable")
 
 
 @mcp.custom_route("/pieces.js", methods=["GET"])
@@ -735,7 +749,8 @@ async def web_pieces_js(request: Request) -> FileResponse:
             {"error": "web/pieces.js est absent du déploiement (vérifiez le Dockerfile)"},
             status_code=500,
         )
-    return _secure_file_response(pieces, "application/javascript")
+    return _secure_file_response(pieces, "application/javascript",
+                                 cache_control="public, max-age=31536000, immutable")
 
 
 @mcp.custom_route("/web/api/games", methods=["POST"])

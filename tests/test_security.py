@@ -153,3 +153,20 @@ def test_error_messages_do_not_reflect_scripts(client):
     assert r.status_code == 400
     # le message d'erreur peut contenir le coup fourni (utile au débogage),
     # mais la page l'affiche via textContent (pas d'injection HTML)
+
+
+def test_index_html_never_served_stale(client):
+    """index.html doit être revalidé à chaque chargement (pas de cache
+    heuristique) — sinon le navigateur sert une ancienne page après un
+    déploiement, avec d'anciens scripts, pendant des jours."""
+    r = client.get("/")
+    assert r.headers.get("cache-control") == "no-cache"
+    assert r.headers.get("etag"), "l'ETAG rend la revalidation gratuite"
+
+
+def test_scripts_cacheable_long_term(client):
+    """Les scripts sont référencés versionnés (?v=N) : cache long autorisé."""
+    for path in ("/util.js", "/pieces.js", "/app.js"):
+        r = client.get(path)
+        assert "max-age=31536000" in r.headers.get("cache-control", "")
+        assert "immutable" in r.headers.get("cache-control", "")
