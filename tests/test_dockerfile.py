@@ -4,6 +4,7 @@ Empêche les régressions du type « fichier ajouté au dépôt mais oublié dan
 Dockerfile » (déjà vu pour web/ et analysis.py).
 """
 
+import re
 from pathlib import Path
 
 REPO = Path(__file__).parent.parent
@@ -26,7 +27,8 @@ def test_dockerfile_copies_web_dir_and_puzzles():
 
 def test_web_page_loads_util_js():
     html = (REPO / "web" / "index.html").read_text(encoding="utf-8")
-    assert 'src="util.js"' in html, "la page doit charger util.js (logique testée)"
+    assert re.search(r'src="util\.js(\?v=\d+)?"', html), \
+        "la page doit charger util.js (versionnée pour le cache-busting)"
 
 
 def test_web_index_exists():
