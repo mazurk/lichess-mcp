@@ -153,3 +153,38 @@ def test_error_messages_do_not_reflect_scripts(client):
     assert r.status_code == 400
     # le message d'erreur peut contenir le coup fourni (utile au débogage),
     # mais la page l'affiche via textContent (pas d'injection HTML)
+
+
+def test_index_html_never_served_stale(client):
+    """index.html doit être revalidé à chaque chargement (pas de cache
+    heuristique) — sinon le navigateur sert une ancienne page après un
+    déploiement, avec d'anciens scripts, pendant des jours."""
+    r = client.get("/")
+    assert r.headers.get("cache-control") == "no-cache"
+    assert r.headers.get("etag"), "l'ETAG rend la revalidation gratuite"
+
+
+def test_scripts_cacheable_long_term(client):
+    """Les scripts sont référencés versionnés (?v=N) : cache long autorisé."""
+    for path in ("/util.js", "/pieces.js", "/app.js"):
+        r = client.get(path)
+        assert "max-age=31536000" in r.headers.get("cache-control", "")
+        assert "immutable" in r.headers.get("cache-control", "")
+
+
+def test_page_served_with_auto_version(client):
+    """La page injecte une version calculée du contenu des scripts :
+    jamais de placeholder brut, jamais de version périmée après un déploiement."""
+    import hashlib as _hl
+    from pathlib import Path as _P
+    r = client.get("/")
+    assert "__BUILD__" not in r.text
+    # la version servie = empreinte réelle des scripts du dépôt
+    h = _hl.sha256()
+    web = _P(__file__).parent.parent / "web"
+    for name in ("util.js", "pieces.js", "app.js"):
+        h.update((web / name).read_bytes())
+    expected = h.hexdigest()[:10]
+    assert f"?v={expected}" in r.text
+    assert r.headers.get("cache-control") == "no-cache"
+    assert r.headers.get("etag")
