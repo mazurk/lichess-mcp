@@ -4,6 +4,20 @@ let state = null, selected = null, pollTimer = null, spectator = false;
 // Navigation dans l'historique : null = position en direct (dernier coup),
 // sinon index du coup affiché (0 = position après le 1er coup).
 let viewPly = null;
+// Mode du cadre « Choix de la partie » : create / join / analysis / dryrun
+let mode = "create";
+
+const MODE_HINTS = {
+  create: "Démarrez une nouvelle partie : contre le moteur, un agent IA ou un humain.",
+  join: "Rejoignez une partie en cours ou terminée (non analysée) : joueur ou spectateur.",
+  analysis: "Ouvrez une partie terminée et analysée pour le debrief (consultation).",
+  dryrun: "Consultez un échiquier d'analyse (dry-run) créé par l'agent.",
+};
+const MODE_LABELS = {
+  join: "Rejoindre",
+  analysis: "Analyser",
+  dryrun: "Consulter",
+};
 
 const statusEl = document.getElementById("status");
 const resultEl = document.getElementById("result");
@@ -69,7 +83,9 @@ async function newGame() {
 async function joinGame() {
   const game_id = document.getElementById("gameId").value;
   if (!game_id) { setStatus("Créez une partie ou sélectionnez-en une dans la liste.", "err"); return; }
-  const joinColor = document.getElementById("joinColor").value;
+  // Les modes Analyse et Dry-run sont en consultation : spectateur imposé.
+  const joinColor = (mode === "analysis" || mode === "dryrun")
+    ? "spectate" : document.getElementById("joinColor").value;
   spectator = joinColor === "spectate";
   const name = document.getElementById("joinName").value.trim() || "Joueur";
   try {
@@ -422,30 +438,67 @@ document.getElementById("btnNext").onclick = navNext;
 document.getElementById("btnLast").onclick = navLast;
 document.getElementById("btnRefreshGames").onclick = () => refreshGameList().catch(e => setStatus(e.message, "err"));
 
+function updateMode() {
+  mode = document.getElementById("modeSelect").value;
+  // section Créer visible seulement en mode create
+  document.getElementById("mode-create").style.display = (mode === "create") ? "block" : "none";
+  // la section join héberge aussi les modes analysis/dryrun (liste + consultation)
+  document.getElementById("mode-join").style.display = (mode === "create") ? "none" : "block";
+  // le choix de couleur (joueur/spectateur) n'a de sens qu'en mode Rejoindre
+  document.getElementById("joinColorWrap").style.display = (mode === "join") ? "block" : "none";
+  document.getElementById("btnJoin").textContent = MODE_LABELS[mode] || "Rejoindre";
+  document.getElementById("modeHint").textContent = MODE_HINTS[mode] || "";
+  refreshGameList().catch(() => {});
+}
+
+function filterGamesForMode(games) {
+  // Filtrage selon le mode : le sélecteur ne propose que les parties
+  // pertinentes (séparation parties classiques / échiquiers d'analyse).
+  if (mode === "join") {
+    // Parties classiques joignables : non analysées, plus les parties EN COURS
+    // déjà analysées par l'agent (affichées en rouge dans la liste).
+    return games.filter(g => g.kind === "game" && (!g.analysed || g.status === "en cours"));
+  }
+  if (mode === "analysis") {
+    return games.filter(g => g.kind === "game" && g.analysed && g.status === "terminée");
+  }
+  if (mode === "dryrun") {
+    return games.filter(g => g.kind === "analysis");
+  }
+  return games;
+}
+
 async function refreshGameList() {
-  // Liste déroulante des parties du serveur : id, joueurs, coups, statut.
+  // Liste déroulante des parties du serveur, filtrée selon le mode.
   const data = await api("/web/api/games", {method: "GET"});
   const select = document.getElementById("gameId");
   const previous = select.value;
   select.innerHTML = "";
-  if (!data.games.length) {
+  const games = filterGamesForMode(data.games || []);
+  if (!games.length) {
     const opt = document.createElement("option");
     opt.value = "";
-    opt.textContent = "Aucune partie sur le serveur";
+    opt.textContent = mode === "dryrun" ? "Aucun échiquier d'analyse sur le serveur"
+      : mode === "analysis" ? "Aucune partie analysée à consulter"
+      : "Aucune partie sur le serveur";
     select.appendChild(opt);
     return;
   }
-  for (const g of data.games) {
+  for (const g of games) {
     const opt = document.createElement("option");
     opt.value = g.game_id;
+    const ongoingAnalysed = g.analysed && g.status === "en cours";
     const label = g.game_id + " — " + g.white_name + " vs " + g.black_name
       + " · " + g.plies + " coups · " + g.status
-      + (g.analysed ? " · analysée" : "");
+      + (g.analysed ? (ongoingAnalysed ? " · ANALYSÉE en cours !" : " · analysée") : "");
     opt.textContent = label;
+    if (ongoingAnalysed) opt.style.color = "#d34f5a";
     select.appendChild(opt);
   }
-  if (previous && data.games.some(g => g.game_id === previous)) {
+  if (previous && games.some(g => g.game_id === previous)) {
     select.value = previous;
   }
 }
+document.getElementById("modeSelect").onchange = updateMode;
 refreshGameList().catch(() => {});
+updateMode();
