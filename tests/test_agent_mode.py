@@ -252,3 +252,21 @@ def test_get_board_navigation():
         server.get_board(gid, ply=4)
     with pytest.raises(ValueError, match="entre 0 et 3"):
         server.get_board(gid, ply=-1)
+
+
+def test_analysis_board_get_board_keeps_fen():
+    """Régression : get_board doit montrer le FEN de départ d'un échiquier
+    d'analyse (bug introduit par la navigation ply, rejouant depuis la
+    position initiale)."""
+    fen = "r1bqkbnr/pppp1ppp/2n5/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4"
+    gid = server.new_analysis_board(fen)["game_id"]
+    b = server.get_board(gid)
+    assert b["fen"] == fen
+    assert b["ply"] == 0 and b["total_moves"] == 0
+
+    # navigation après des coups joués sur l'échiquier d'analyse
+    server.play_move(gid, "O-O", color="white")
+    b0 = server.get_board(gid, ply=0)
+    assert b0["fen"] == fen, "ply=0 doit revenir au FEN de départ"
+    b1 = server.get_board(gid)
+    assert b1["fen"] != fen and b1["ply"] == 1

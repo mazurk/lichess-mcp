@@ -324,9 +324,12 @@ def get_board(game_id: str, ply: int | None = None) -> dict:
     ply = int(ply)
     if ply < 0 or ply > total:
         raise ValueError(f"ply doit valoir entre 0 et {total} (coups joués).")
-    replay = chess.Board()
-    for move in board.move_stack[:ply]:
-        replay.push(move)
+    # Copie du plateau (conserve le FEN de départ des échiquiers d'analyse),
+    # puis dépilage jusqu'au coup demandé — un simple rejouage depuis la
+    # position initiale ignorerait le FEN de départ.
+    replay = board.copy()
+    while len(replay.move_stack) > ply:
+        replay.pop()
     result = {
         "board": _board_str(replay),
         "fen": replay.fen(),
