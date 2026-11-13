@@ -306,17 +306,47 @@ def join_game(game_id: str, player: str, color: str | None = None) -> dict:
 
 
 @mcp.tool()
-def get_board(game_id: str) -> dict:
-    """Affiche l'échiquier actuel (ASCII), le FEN et le trait."""
+def get_board(game_id: str, ply: int | None = None) -> dict:
+    """Affiche l'échiquier (ASCII), le FEN et le trait.
+
+    Args:
+        game_id: identifiant de la partie ou de l'échiquier d'analyse.
+        ply: navigation dans l'historique — numéro du coup **après lequel**
+            afficher la position (1 = après le 1er coup, 0 = position
+            initiale). Par défaut (None) : position actuelle. Permet de
+            rejouer la partie coup par coup comme sur l'interface web.
+    """
     game = _get_game(game_id)
     board = game["board"]
-    return {
-        "board": _board_str(board),
-        "fen": board.fen(),
-        "in_check": board.is_check(),
-        "move_number": board.fullmove_number,
+    total = len(board.move_stack)
+    if ply is None:
+        ply = total
+    ply = int(ply)
+    if ply < 0 or ply > total:
+        raise ValueError(f"ply doit valoir entre 0 et {total} (coups joués).")
+    replay = chess.Board()
+    for move in board.move_stack[:ply]:
+        replay.push(move)
+    result = {
+        "board": _board_str(replay),
+        "fen": replay.fen(),
+        "in_check": replay.is_check(),
+        "move_number": replay.fullmove_number,
+        "ply": ply,
+        "total_moves": total,
         **_turn_info(game),
+        # en relecture, le trait est celui de la position rejouée
+        "turn": "white" if replay.turn == chess.WHITE else "black",
     }
+    if ply < total:
+        next_move = board.move_stack[ply]
+        result["note"] = (
+            f"Position après le coup {ply} sur {total} "
+            f"(relecture). Prochain coup joué : {replay.san(next_move)}. "
+            "Jouez avec play_move uniquement sur la position actuelle "
+            "(ply={total_moves})."
+        )
+    return result
 
 
 @mcp.tool()
