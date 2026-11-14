@@ -270,3 +270,23 @@ def test_analysis_board_get_board_keeps_fen():
     assert b0["fen"] == fen, "ply=0 doit revenir au FEN de départ"
     b1 = server.get_board(gid)
     assert b1["fen"] != fen and b1["ply"] == 1
+
+
+@needs_stockfish
+def test_analyze_game_on_analysis_board_with_fen():
+    """Régression : l'analyse d'un échiquier d'analyse créé depuis un FEN
+    échouait (coups rejoués depuis la position initiale -> protocole
+    moteur cassé, timeout côté client)."""
+    fen = "r1bqkbnr/pppp1ppp/2n5/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4"
+    gid = server.new_analysis_board(fen)["game_id"]
+    server.play_move(gid, "O-O", color="white")
+    server.play_move(gid, "a6", color="black")
+    r = server.analyze_game(gid, depth=10)
+    assert r["published"] is True
+    assert len(r["evals"]) == 2
+    assert r["evals"][0]["san"] == "O-O"
+    # le PGN embarque le FEN de départ
+    placement = fen.split(" ", 1)[0]
+    assert placement in r["pgn"]
+    # l'analyse publiée est visible sur l'interface web
+    assert server.GAMES[gid]["analysis"]["depth"] == 10

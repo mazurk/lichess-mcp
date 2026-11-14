@@ -82,8 +82,13 @@ def _pv_to_san(board: chess.Board, pv: list[chess.Move], max_plies: int = 6) -> 
     return pv_san
 
 
-def analyze_moves(moves: list[chess.Move], depth: int = 15) -> dict:
-    """Analyse une séquence de coups depuis la position initiale.
+def analyze_moves(moves: list[chess.Move], depth: int = 15,
+                  root: chess.Board | None = None) -> dict:
+    """Analyse une séquence de coups depuis une position de départ.
+
+    Par défaut la position initiale ; `root` permet d'analyser depuis un FEN
+    arbitraire (échiquiers d'analyse) — sans quoi les coups seraient illégaux
+    depuis la position initiale et le protocole moteur échouerait.
 
     Retourne le PGN annoté, un résumé par camp et la liste des coups critiques.
     """
@@ -94,11 +99,13 @@ def analyze_moves(moves: list[chess.Move], depth: int = 15) -> dict:
             "ou définissez LICHESS_MCP_STOCKFISH vers le binaire."
         )
     depth = max(1, min(int(depth), 30))
+    root = root.copy(stack=False) if root is not None else chess.Board()
 
     game = chess.pgn.Game()
     game.headers["Event"] = "Analyse lichess-mcp"
+    game.setup(root)
     node = game
-    board = chess.Board()
+    board = root.copy(stack=False)
     critical: list[dict] = []
     evals: list[dict] = []
     errors_white = errors_black = 0
