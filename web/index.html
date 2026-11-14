@@ -78,6 +78,10 @@
   .board-label .seat { color: #8a8a8a; font-size: 12px; }
   .board-label .turn-ind { color: var(--accent); font-weight: 700; }
   .board-label .to-move { color: #fff; font-weight: 700; }
+  .board-label .clock { font-variant-numeric: tabular-nums; font-weight: 700;
+                        font-size: 14px; color: #ddd; }
+  .board-label .clock.running { color: #fff; }
+  .board-label .clock.low { color: #d34f5a; }
   .err { color: #e07a5f; }
   .ok { color: var(--accent); }
   #status { min-height: 18px; font-size: 13px; margin: 2px 0 0; }
@@ -128,6 +132,11 @@
         <label for="level">Niveau du moteur</label>
         <select id="level"><option value="easy">Facile</option><option value="medium" selected>Moyen</option><option value="hard">Difficile</option></select>
       </div>
+      <label for="clockMode">Horloge</label>
+      <select id="clockMode">
+        <option value="infinite" selected>INFINI</option>
+        <option value="10+0">10+0 (10 minutes)</option>
+      </select>
       <div style="display:flex; gap:8px; margin-top:12px;">
         <button id="btnNew">Nouvelle partie</button>
       </div>
