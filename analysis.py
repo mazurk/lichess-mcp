@@ -82,13 +82,26 @@ def _pv_to_san(board: chess.Board, pv: list[chess.Move], max_plies: int = 6) -> 
     return pv_san
 
 
+def _clk_str(ms: int) -> str:
+    """Temps restant au format Lichess `[%clk]` : H:MM:SS."""
+    total_sec = max(0, int(ms)) // 1000
+    h, rem = divmod(total_sec, 3600)
+    m, s = divmod(rem, 60)
+    return f"{h}:{m:02d}:{s:02d}"
+
+
 def analyze_moves(moves: list[chess.Move], depth: int = 15,
-                  root: chess.Board | None = None) -> dict:
+                  root: chess.Board | None = None,
+                  move_clocks: list[dict | None] | None = None) -> dict:
     """Analyse une séquence de coups depuis une position de départ.
 
     Par défaut la position initiale ; `root` permet d'analyser depuis un FEN
     arbitraire (échiquiers d'analyse) — sans quoi les coups seraient illégaux
     depuis la position initiale et le protocole moteur échouerait.
+
+    `move_clocks` (optionnel) : relevés d'horloge par coup (champ `clock` de
+    l'historique) ; s'ils sont fournis, chaque coup du PGN est annoté
+    `[%clk H:MM:SS]` avec le temps restant du camp qui vient de jouer.
 
     Retourne le PGN annoté, un résumé par camp et la liste des coups critiques.
     """
@@ -111,7 +124,7 @@ def analyze_moves(moves: list[chess.Move], depth: int = 15,
     errors_white = errors_black = 0
 
     with chess.engine.SimpleEngine.popen_uci(path) as engine:
-        for move in moves:
+        for i, move in enumerate(moves):
             mover = board.turn
             info = engine.analyse(board, chess.engine.Limit(depth=depth))
             score_before = _pov_score_cp(info, mover)
@@ -133,6 +146,8 @@ def analyze_moves(moves: list[chess.Move], depth: int = 15,
 
             node = node.add_variation(move)
             comment = f"[%eval {_eval_str(score_after)}]"
+            if move_clocks is not None and i < len(move_clocks) and move_clocks[i]:
+                comment += f" [%clk {_clk_str(move_clocks[i]['remaining_ms'])}]"
             klass = _classify(delta)
             label = None
             if klass:

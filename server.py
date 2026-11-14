@@ -265,6 +265,27 @@ def _clock_state(game: dict) -> dict | None:
     return result
 
 
+def _clocks_at_ply(game: dict, ply: int) -> dict | None:
+    """Temps restants de chaque camp après le coup `ply` (relecture).
+
+    Pour chaque camp : son dernier relevé parmi les coups 0..ply-1 ; s'il
+    n'a pas encore joué, le temps de base de la cadence.
+    """
+    if game["clock_cfg"] is None:
+        return None
+    clocks = game["move_clocks"]
+    result: dict[str, int | None] = {"white_ms": None, "black_ms": None}
+    for color in ("white", "black"):
+        for i in range(min(ply, len(clocks)) - 1, -1, -1):
+            entry = clocks[i]
+            if entry and entry["color"] == color:
+                result[f"{color}_ms"] = entry["remaining_ms"]
+                break
+        if result[f"{color}_ms"] is None:
+            result[f"{color}_ms"] = game["clock_cfg"]["base_ms"]
+    return result
+
+
 def _seat_info(game: dict) -> dict:
     return {"white_seat": game["white_seat"], "black_seat": game["black_seat"]}
 
@@ -436,6 +457,8 @@ def get_board(game_id: str, ply: int | None = None) -> dict:
             afficher la position (1 = après le 1er coup, 0 = position
             initiale). Par défaut (None) : position actuelle. Permet de
             rejouer la partie coup par coup comme sur l'interface web.
+            `ply_clocks` donne les temps restants de chaque camp à ce
+            moment de la partie (utile pour le debrief chrono).
     """
     game = _get_game(game_id)
     board = game["board"]
@@ -459,6 +482,8 @@ def get_board(game_id: str, ply: int | None = None) -> dict:
         "ply": ply,
         "total_moves": total,
         "clock": _clock_state(game),
+        # temps restants de chaque camp après le coup `ply` (relecture)
+        "ply_clocks": _clocks_at_ply(game, ply),
         **_turn_info(game),
         # en relecture, le trait est celui de la position rejouée
         "turn": "white" if replay.turn == chess.WHITE else "black",
@@ -797,7 +822,8 @@ def analyze_game(game_id: str, depth: int = 15, publish: bool = True) -> dict:
         raise ValueError("Aucun coup à analyser dans cette partie.")
     # La position racine est le FEN de départ (échiquiers d'analyse inclus) :
     # sans elle, les coups seraient illégaux depuis la position initiale.
-    result = analyze_moves(moves, depth, root=game["board"].root())
+    result = analyze_moves(moves, depth, root=game["board"].root(),
+                           move_clocks=game["move_clocks"])
     result["game_id"] = game_id
     if publish:
         game["analysis"] = {"depth": depth, "evals": result["evals"]}

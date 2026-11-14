@@ -129,3 +129,34 @@ def test_move_clocks_in_history(client):
     assert h0["clock"]["color"] == "white"
     assert 2_000 < h0["clock"]["spent_ms"] < 3_000
     assert h0["clock"]["remaining_ms"] < 600_000
+
+
+def test_get_board_ply_clocks():
+    """get_board(ply=N) : temps restants de chaque camp à ce moment-là."""
+    gid = server.new_game(white="A", black="B", clock="10+0")["game_id"]
+    game = server.GAMES[gid]
+    game["turn_started_at"] -= 2.0
+    server.play_move(gid, "e4", color="white")
+    server.play_move(gid, "e5", color="black")
+    # après le 1er coup : blanc a joué (~2 s), noir pas encore (base)
+    b1 = server.get_board(gid, ply=1)
+    assert b1["ply_clocks"]["white_ms"] < 600_000 - 1_000
+    assert b1["ply_clocks"]["black_ms"] == 600_000
+    # position initiale : les deux au temps de base
+    b0 = server.get_board(gid, ply=0)
+    assert b0["ply_clocks"] == {"white_ms": 600_000, "black_ms": 600_000}
+    # sans horloge : champ null
+    gid2 = server.new_game(white="A", black="B")["game_id"]
+    assert server.get_board(gid2, ply=0)["ply_clocks"] is None
+
+
+def test_analyze_game_pgn_has_clk():
+    """analyze_game : le PGN annoté contient [%clk H:MM:SS] après chaque coup."""
+    gid = server.new_game(white="A", black="B", clock="10+0")["game_id"]
+    game = server.GAMES[gid]
+    game["turn_started_at"] -= 2.0
+    server.play_move(gid, "e4", color="white")
+    server.play_move(gid, "e5", color="black")
+    result = server.analyze_game(gid, depth=5, publish=False)
+    assert "[%clk 0:09:5" in result["pgn"]
+    assert "[%eval" in result["pgn"]
