@@ -290,3 +290,35 @@ def test_analyze_game_on_analysis_board_with_fen():
     assert placement in r["pgn"]
     # l'analyse publiée est visible sur l'interface web
     assert server.GAMES[gid]["analysis"]["depth"] == 10
+
+
+@needs_stockfish
+def test_analyze_pgn_localizes_illegal_move():
+    """Un coup illégal dans un PGN doit être localisé précisément
+    (numéro de coup, camp, position) au lieu d'un rejet générique."""
+    bad_pgn = """[Event "Test"]
+
+1. e4 e5 2. Ke2 Ke7 3. O-O 1-0 *"""
+    with pytest.raises(ValueError, match="coup 3") as exc_info:
+        server.analyze_pgn(bad_pgn, depth=8)
+    msg = str(exc_info.value)
+    assert "Blancs à jouer" in msg
+    assert "4 coups légaux" in msg
+    assert "O-O" in msg
+    assert "rnbq1bnr" in msg  # FEN au moment du rejet
+
+
+@needs_stockfish
+def test_analyze_pgn_with_fen_header():
+    """Un PGN avec en-tête FEN doit être analysé depuis cette position
+    (et non depuis la position initiale)."""
+    fen_pgn = """[Event "Test"]
+[SetUp "1"]
+[FEN "6k1/8/6K1/8/8/8/8/R7 w - - 0 1"]
+
+1. Ra8# 1-0 *"""
+    r = server.analyze_pgn(fen_pgn, depth=8)
+    assert r["summary"]["moves"] == 1
+    assert r["evals"][0]["san"] == "Ra8#"
+    assert r["evals"][0]["eval_white"] >= 90000  # mat
+    assert "6k1" in r["pgn"]  # le FEN de départ est dans le PGN annoté
