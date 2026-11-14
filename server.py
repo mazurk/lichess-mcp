@@ -484,6 +484,11 @@ def get_board(game_id: str, ply: int | None = None) -> dict:
         "clock": _clock_state(game),
         # temps restants de chaque camp après le coup `ply` (relecture)
         "ply_clocks": _clocks_at_ply(game, ply),
+        # fin de partie explicite (drapeau, abandon, mat...) pour que
+        # l'agent qui poll get_board soit informé sans avoir à deviner
+        # via l'horloge à 0.
+        "over": _is_over(game),
+        "result": _game_over_info(board, game) or None,
         **_turn_info(game),
         # en relecture, le trait est celui de la position rejouée
         "turn": "white" if replay.turn == chess.WHITE else "black",
@@ -614,6 +619,10 @@ def wait_for_turn(game_id: str, color: str | None = None, timeout_seconds: int =
 
     deadline = time.monotonic() + timeout_seconds
     while True:
+        # détecte la chute du drapeau du camp au trait AVANT de tester la fin :
+        # sans cela, un drapeau tombé resterait invisible et l'agent attendrait
+        # en boucle des timeouts sans jamais voir la partie terminée.
+        _check_flag(game)
         over = _is_over(game)
         if over:
             if game["resigned"]:
