@@ -185,3 +185,42 @@ def test_web_move_player_cannot_play_both_sides(client):
     r = client.post(f"/web/api/games/{gid}/move",
                     json={"move": "e7e5", "your_color": "black", "your_name": "Nicolas"})
     assert r.status_code == 400
+
+
+def test_join_as_spectator():
+    """L'agent peut rejoindre en spectateur : aucune place prise, illimité."""
+    gid = server.new_game(white="A", black="B")["game_id"]
+    r = server.join_game(gid, "Observateur", spectate=True)
+    assert r["you_are"] == "spectator"
+    assert r["spectators"] == 1
+    assert r["white_seat"] is None and r["black_seat"] is None
+
+    # illimité : plusieurs spectateurs, même sur une partie complète
+    server.join_game(gid, "Nicolas", color="white")
+    server.join_game(gid, "Agent IA", color="black")
+    for i in range(5):
+        server.join_game(gid, f"Spec{i}", spectate=True)
+    r = server.join_game(gid, "Dernier", spectate=True)
+    assert r["spectators"] == 7
+
+    # idempotent pour un même nom
+    server.join_game(gid, "Observateur", spectate=True)
+    assert len(server.GAMES[gid]["spectators"]) == 7
+
+
+def test_spectator_counter_in_web_state(client):
+    gid = server.new_game(white="A", black="B")["game_id"]
+    server.join_game(gid, "Spec1", spectate=True)
+    server.join_game(gid, "Spec2", spectate=True)
+    state = client.get(f"/web/api/games/{gid}").json()
+    assert state["spectators"] == 2
+
+
+def test_web_join_spectate_endpoint(client):
+    gid = server.new_game(white="A", black="B")["game_id"]
+    r = client.post(f"/web/api/games/{gid}/join", json={"name": "WebSpec", "spectate": True})
+    assert r.status_code == 200
+    state = r.json()
+    assert state["your_color"] is None
+    assert state["spectators"] == 1
+    assert server.GAMES[gid]["white_seat"] is None

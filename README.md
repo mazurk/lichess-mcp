@@ -40,7 +40,7 @@ format Lichess (FEN + coups UCI).
 | Outil | Rôle |
 |---|---|
 | `new_game(white, black, level, engine_color)` | Démarre une partie : noms des deux joueurs ; `engine_color` = camp du moteur (`None` = partie libre). N'attribue aucune place |
-| `join_game(game_id, player, color)` | Occupe un camp (premier arrivé, premier servi) ; le camp devient verrouillé au nom du joueur, l'autre joueur obtient l'autre camp |
+| `join_game(game_id, player, color, spectate)` | Occupe un camp (premier arrivé, premier servi) ; le camp devient verrouillé au nom du joueur, l'autre joueur obtient l'autre camp. `spectate=True` : rejoint en spectateur (aucune place prise, nombre illimité, compteur visible sur l'interface) |
 | `new_analysis_board(fen)` | Échiquier d'analyse (dry-run) : testez des coups des deux couleurs depuis un FEN |
 | `get_board(game_id)` | Échiquier ASCII, FEN, trait, noms des joueurs |
 | `legal_moves(game_id)` | Coups légaux au format SAN |

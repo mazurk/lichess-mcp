@@ -163,6 +163,7 @@ def _create_game(white_name: str, black_name: str, level: str,
         "kind": kind,
         "white_seat": None,
         "black_seat": None,
+        "spectators": {},  # nom -> True (nombre illimité, compteur pour l'UI)
     }
     game_id = uuid.uuid4().hex[:8]
     GAMES[game_id] = game
@@ -243,24 +244,42 @@ def new_analysis_board(fen: str | None = None) -> dict:
 
 
 @mcp.tool()
-def join_game(game_id: str, player: str, color: str | None = None) -> dict:
-    """Rejoint une partie en occupant un camp (premier arrivé, premier servi).
+def join_game(game_id: str, player: str, color: str | None = None,
+              spectate: bool = False) -> dict:
+    """Rejoint une partie en occupant un camp (premier arrivé, premier servi),
+    ou en tant que spectateur.
 
     La création d'une partie n'attribue aucune place : le premier joueur qui
     rejoint choisit son camp, qui devient alors verrouillé à son nom ; le
     second joueur obtient l'autre. Un même joueur ne peut pas occuper les
     deux camps. Rejoindre à nouveau avec le même nom est idempotent.
 
+    Avec spectate=True, aucune place n'est prise : le joueur est enregistré
+    comme spectateur (nombre illimité), visible dans le compteur de l'UI.
+
     Args:
         game_id: identifiant de la partie.
         player: nom du joueur qui rejoint.
         color: camp souhaité, "white" ou "black" ; None pour le premier camp
             libre. Refusé si le camp est déjà occupé ou joué par le moteur.
+        spectate: rejoindre comme spectateur (aucune place, illimité).
     """
     game = _get_game(game_id)
     player = str(player).strip()
     if not player:
         raise ValueError("player doit être un nom non vide.")
+
+    if spectate:
+        game["spectators"][player] = True
+        return {
+            "game_id": game_id,
+            "you_are": "spectator",
+            "spectators": len(game["spectators"]),
+            "board": _board_str(game["board"]),
+            "fen": game["board"].fen(),
+            **_turn_info(game),
+            "note": "Mode spectateur : utilisez get_board pour suivre la partie.",
+        }
 
     for c in ("white", "black"):
         if game[f"{c}_seat"] == player:
@@ -721,6 +740,7 @@ def _web_state(game_id: str, game: dict, your_color: str | None) -> dict:
         "history": _full_history(board),
         "status": _game_status(game),
         "analysed": game.get("analysis") is not None,
+        "spectators": len(game["spectators"]),
         "legal_moves_uci": [] if over or your_color is None else [m.uci() for m in board.legal_moves],
         "last_move": board.peek().uci() if board.move_stack else None,
         "analysis": game.get("analysis"),
@@ -923,7 +943,8 @@ async def web_join_game(request: Request) -> JSONResponse:
     name = str(body.get("name", "")).strip()
     if not name:
         return JSONResponse({"error": "name doit être un nom non vide"}, status_code=400)
-    color = body.get("color")
+    spectate = bool(body.get("spectate", False))
+    color = body.get("color") if not spectate else None
     if color is not None:
         color = str(color).lower()
         if color not in ("white", "black"):
@@ -934,10 +955,11 @@ async def web_join_game(request: Request) -> JSONResponse:
         if seat is not None and seat != name:
             return JSONResponse({"error": f"le camp {color} est déjà occupé par {seat}"}, status_code=400)
     try:
-        result = join_game(game_id, name, color)
+        result = join_game(game_id, name, color, spectate=spectate)
     except ValueError as exc:
         return JSONResponse({"error": str(exc)}, status_code=400)
-    state = _web_state(game_id, game, result["your_color"])
+    your_color = result.get("your_color")
+    state = _web_state(game_id, game, your_color)
     state["joined"] = True
     return JSONResponse(state)
 

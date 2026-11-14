@@ -99,7 +99,12 @@ async function joinGame() {
       spectator = joinColor === "spectate";
       const name = document.getElementById("joinName").value.trim() || "Joueur";
       if (spectator) {
-        state = await api("/web/api/games/" + encodeURIComponent(game_id), {method: "GET"});
+        // Le spectateur s'enregistre : il compte dans le compteur de la partie.
+        state = await api("/web/api/games/" + encodeURIComponent(game_id) + "/join", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({name, spectate: true}),
+        });
       } else {
         state = await api("/web/api/games/" + encodeURIComponent(game_id) + "/join", {
           method: "POST",
@@ -294,6 +299,10 @@ function renderGameStatus() {
   let html = '<span class="badge ' + cls + '">' + (state.over ? "" : "● ") + badge + "</span>";
   if (state.analysed && state.analysis) {
     html += ' <span class="badge analysed">analysée (prof. ' + state.analysis.depth + ")</span>";
+  }
+  if (state.spectators > 0) {
+    html += ' <span class="badge spectators">👁 ' + state.spectators
+      + (state.spectators > 1 ? " spectateurs" : " spectateur") + "</span>";
   }
   if (viewPly !== null && !isLive()) {
     html += ' <span class="badge browsing">relecture : coup '
