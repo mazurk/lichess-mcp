@@ -310,6 +310,14 @@ document.addEventListener("keydown", (ev) => {
 
 let stateFetchedAt = 0;
 
+function clockFormat(ms) {
+  ms = Math.max(0, ms);
+  const totalSec = Math.floor(ms / 1000);
+  const m = Math.floor(totalSec / 60);
+  const sec = totalSec % 60;
+  return m + ":" + (sec < 10 ? "0" : "") + sec;
+}
+
 function clockText(color) {
   // Temps restant affiché : valeur serveur (au dernier poll) moins le temps
   // écoulé si c'est le camp au trait — le poll (2 s) resynchronise.
@@ -318,22 +326,37 @@ function clockText(color) {
   if (state.clock.running === color && !state.over) {
     ms -= Date.now() - stateFetchedAt;
   }
-  ms = Math.max(0, ms);
-  const totalSec = Math.floor(ms / 1000);
-  const m = Math.floor(totalSec / 60);
-  const sec = totalSec % 60;
-  return m + ":" + (sec < 10 ? "0" : "") + sec;
+  return clockFormat(ms);
+}
+
+function browsingClockMs(color) {
+  // En relecture : temps restant d'un camp au pli consulté = son dernier
+  // relevé d'horloge parmi les coups 0..viewPly (sinon le temps de base).
+  const hist = state.history || [];
+  const upto = (viewPly === null) ? hist.length - 1 : viewPly;
+  for (let i = upto; i >= 0; i--) {
+    const c = hist[i] && hist[i].clock;
+    if (c && c.color === color) return c.remaining_ms;
+  }
+  return (typeof state.clock.base_ms === "number") ? state.clock.base_ms : null;
 }
 
 function updateClocks() {
   if (!state || !state.clock) return;
+  const browsing = viewPly !== null && !isLive();
   for (const color of ["white", "black"]) {
     const el = document.getElementById("clock-" + color);
     if (!el) continue;
-    el.textContent = clockText(color);
-    el.className = "clock"
-      + (state.clock.running === color && !state.over ? " running" : "")
-      + ((color === "white" ? state.clock.white_ms : state.clock.black_ms) < 30000 ? " low" : "");
+    if (browsing) {
+      const ms = browsingClockMs(color);
+      el.textContent = (ms === null) ? "" : clockFormat(ms);
+      el.className = "clock" + ((ms !== null && ms < 30000) ? " low" : "");
+    } else {
+      el.textContent = clockText(color);
+      el.className = "clock"
+        + (state.clock.running === color && !state.over ? " running" : "")
+        + ((color === "white" ? state.clock.white_ms : state.clock.black_ms) < 30000 ? " low" : "");
+    }
   }
 }
 setInterval(updateClocks, 500);

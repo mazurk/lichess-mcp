@@ -64,6 +64,7 @@ def test_get_board_shows_both_clocks():
     assert b["clock"]["white_ms"] <= 600_000
     assert b["clock"]["black_ms"] == 600_000
     assert b["clock"]["running"] == "white"
+    assert b["clock"]["base_ms"] == 600_000
     # sans horloge : champ null
     gid2 = server.new_game()["game_id"]
     assert server.get_board(gid2)["clock"] is None

@@ -256,7 +256,7 @@ def _clock_state(game: dict) -> dict | None:
     running = None
     if not _is_over(game):
         running = "white" if game["board"].turn == chess.WHITE else "black"
-    result = {"running": running}
+    result = {"running": running, "base_ms": game["clock_cfg"]["base_ms"]}
     for color in ("white", "black"):
         remaining = game["clock_ms"][color]
         if running == color:
