@@ -706,12 +706,33 @@ def analyze_pgn(pgn: str, depth: int = 15) -> dict:
         depth: profondeur d'analyse Stockfish (1 à 30, défaut 15).
     """
     game = chess.pgn.read_game(io.StringIO(pgn))
-    if game is None or game.errors:
+    if game is None:
         raise ValueError("PGN invalide ou illisible.")
+    if game.errors:
+        # Localiser le coup fautif : rejouer la ligne principale jusqu'à
+        # l'erreur pour donner le numéro de coup, le camp et la position.
+        board = game.board()
+        legal_plies = 0
+        for move in game.mainline_moves():
+            board.push(move)
+            legal_plies += 1
+        move_number = board.fullmove_number
+        side = "Blancs" if board.turn == chess.WHITE else "Noirs"
+        # message de python-chess tronqué de son suffixe technique
+        details = " ; ".join(
+            str(e).split(" while parsing")[0] for e in game.errors
+        )
+        raise ValueError(
+            f"PGN rejeté au coup {move_number} ({side} à jouer) après "
+            f"{legal_plies} coups légaux — {details}. "
+            f"Position au moment du rejet : {board.fen()}"
+        )
     moves = list(game.mainline_moves())
     if not moves:
         raise ValueError("Aucun coup trouvé dans ce PGN.")
-    return analyze_moves(moves, depth)
+    # La position racine du PGN (en-tête FEN) doit être transmise : sans elle,
+    # les coups seraient rejoués depuis la position initiale.
+    return analyze_moves(moves, depth, root=game.board())
 
 
 # ---------------------------------------------------------------------------
