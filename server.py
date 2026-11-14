@@ -566,20 +566,41 @@ def game_status(game_id: str) -> dict:
     return status
 
 
+def _start_puzzle(puzzle: dict) -> dict:
+    """Initialise une session de puzzle (état multi-coups pour les mats en 2)."""
+    board = chess.Board(puzzle["FEN"])
+    session = {
+        "puzzle": puzzle,
+        "board": board.copy(stack=False),
+        "plies_done": 0,
+    }
+    ACTIVE_PUZZLES[puzzle["PuzzleId"]] = session
+    return session
+
+
 @mcp.tool()
 def next_puzzle() -> dict:
-    """Tire un puzzle au format Lichess : trouvez le meilleur coup (mat en 1)."""
+    """Tire un puzzle : trouvez le mat (en 1 ou 2 coups).
+
+    Pour un mat en 2, jouez le coup clé avec try_puzzle_move : la réponse
+    de l'adversaire est jouée automatiquement, puis trouvez le coup de mat.
+    """
     puzzle = random.choice(PUZZLES)
-    board = chess.Board(puzzle["FEN"])
-    puzzle_id = puzzle["PuzzleId"]
-    ACTIVE_PUZZLES[puzzle_id] = puzzle
+    session = _start_puzzle(puzzle)
+    board = session["board"]
+    mate_in = puzzle.get("MateIn", 1)
+    hint = ("Trouvez le coup gagnant (mat en 1)."
+            if mate_in == 1
+            else f"Mat en {mate_in} : trouvez le coup clé, l'adversaire "
+                 "répondra, puis donnez le mat.")
     return {
-        "puzzle_id": puzzle_id,
+        "puzzle_id": puzzle["PuzzleId"],
         "theme": puzzle["Theme"],
+        "mate_in": mate_in,
         "board": _board_str(board),
         "fen": puzzle["FEN"],
         "side_to_play": "white" if board.turn == chess.WHITE else "black",
-        "hint": "Trouvez le coup gagnant (mat en 1).",
+        "hint": hint,
     }
 
 
@@ -587,26 +608,59 @@ def next_puzzle() -> dict:
 def try_puzzle_move(puzzle_id: str, move: str) -> dict:
     """Propose une solution pour un puzzle tiré avec next_puzzle.
 
+    Pour un mat en 2 : le coup clé est validé, la réponse de l'adversaire
+    est jouée automatiquement, puis le coup de mat est demandé.
+
     Args:
         puzzle_id: identifiant du puzzle.
         move: coup proposé, en SAN ou UCI.
     """
-    if puzzle_id not in ACTIVE_PUZZLES:
+    session = ACTIVE_PUZZLES.get(puzzle_id)
+    if session is None or "puzzle" not in session:
         raise ValueError(f"Puzzle inconnu : {puzzle_id}")
-    puzzle = ACTIVE_PUZZLES[puzzle_id]
-    board = chess.Board(puzzle["FEN"])
+    puzzle = session["puzzle"]
+    board = session["board"]
+    line = puzzle["Moves"].split()
+    plies_done = session["plies_done"]
+
     parsed = _parse_move(board, move)
     if parsed is None or parsed not in board.legal_moves:
         return {"correct": False, "note": f"Coup invalide ou illégal : {move}"}
-    if parsed.uci() == puzzle["Moves"]:
+
+    if parsed.uci() != line[plies_done]:
+        mate_in = puzzle.get("MateIn", 1)
+        hint = ("Cherchez un mat en un coup."
+                if mate_in == 1 else "Cherchez le coup clé du mat en 2.")
+        return {
+            "correct": False,
+            "note": f"{board.san(parsed)} n'est pas la solution. Réessayez.",
+            "hint": hint,
+        }
+
+    san = board.san(parsed)
+    board.push(parsed)
+    plies_done += 1
+
+    # réponse de l'adversaire : jouée automatiquement
+    if plies_done < len(line) and plies_done % 2 == 1:
+        reply = chess.Move.from_uci(line[plies_done])
+        reply_san = board.san(reply)
+        board.push(reply)
+        plies_done += 1
+        session["plies_done"] = plies_done
         return {
             "correct": True,
-            "note": f"Bravo ! {board.san(parsed)} est la solution ({puzzle['Theme']}).",
+            "note": f"{san} ! L'adversaire répond {reply_san}. Trouvez le mat.",
+            "board": _board_str(board),
+            "fen": board.fen(),
+            "mate_in": puzzle.get("MateIn", 1),
         }
+
+    session["plies_done"] = plies_done
+    mate_in = puzzle.get("MateIn", 1)
     return {
-        "correct": False,
-        "note": f"{board.san(parsed)} n'est pas la solution. Réessayez.",
-        "hint": "Cherchez un mat en un coup.",
+        "correct": True,
+        "note": f"Bravo ! {san} — mat en {mate_in} trouvé ({puzzle['Theme']}).",
     }
 
 

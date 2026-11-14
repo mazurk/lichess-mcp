@@ -49,8 +49,8 @@ format Lichess (FEN + coups UCI).
 | `undo(game_id)` | Annule le dernier coup (+ réponse du moteur s'il vient de jouer) |
 | `resign(game_id, color)` | Abandon pour le camp indiqué (défaut : camp au trait) |
 | `game_status(game_id)` | Statut : joueurs, trait, fin éventuelle |
-| `next_puzzle()` | Tire un puzzle Lichess |
-| `try_puzzle_move(puzzle_id, move)` | Propose une solution de puzzle |
+| `next_puzzle()` | Tire un puzzle (mat en 1 ou en 2) |
+| `try_puzzle_move(puzzle_id, move)` | Propose une solution de puzzle — pour un mat en 2 : coup clé validé, réponse adverse jouée automatiquement, puis coup de mat |
 | `analyze_game(game_id, depth)` | Analyse Stockfish d'une partie ou d'un échiquier d'analyse → PGN annoté + coups critiques |
 | `analyze_pgn(pgn, depth)` | Analyse Stockfish d'un PGN externe (ex. exporté de lichess.org) |
 
@@ -119,69 +119,20 @@ demande le token une fois et le mémorise localement.
 
 ## Ajouter des puzzles
 
-`puzzles.json` contient quelques mats en un coup de démonstration. Vous pouvez
-le remplacer par un extrait de la base officielle
+`puzzles.json` contient **283 puzzles** : 63 mats en 1 et **220 mats en 2**,
+générés et validés par Stockfish (ligne légale, mat final authentique,
+« mat en N exactement »). Format :
+
+```json
+{
+  "PuzzleId": "mate2_001",
+  "FEN": "...",
+  "Moves": "e2e4 e7e5 ...",   // ligne UCI complète (2N-1 demi-coups)
+  "MateIn": 2,
+  "Theme": "mateIn2"
+}
+```
+
+Pour enrichir la base, vous pouvez importer des puzzles au format
 [Lichess Puzzle Database](https://database.lichess.org/#puzzles) (champ
-`Moves` : coups UCI alternés solution/réponse, le premier coup est toujours
-celui à trouver).
-
-## Sémantique des champs (outils MCP)
-
-Les réponses des outils MCP sont **neutres** — aucune notion de « votre » ou
-d'« agent » :
-
-- `white_name` / `black_name` : nom du joueur des blancs / des noirs ;
-- `turn` : camp au trait ("white"/"black") ;
-- `engine_color` : camp joué par le moteur (`null` en partie libre) ;
-- `kind` : "game" (partie) ou "analysis" (échiquier d'analyse).
-
-`play_move(color=...)` joue pour le camp indiqué (défaut : camp au trait) ;
-le camp du moteur est refusé.
-
-**Places** : `join_game(player, color)` occupe un camp — premier arrivé,
-premier servi. La création d'une partie n'attribue aucune place : le premier
-qui rejoint choisit son camp (verrouillé à son nom), le second obtient l'autre.
-Un joueur ne peut pas occuper ni jouer les deux camps. `play_move` exige alors
-`player=<nom>` correspondant à l'occupant ; un camp libre reste jouable par
-quiconque (partie ouverte), et jouer avec `player` sur un camp libre
-l'occupe.
-
-## Analyse des parties
-
-Deux outils d'analyse (Stockfish requis : installé dans l'image Docker, ou
-`apt install stockfish`, ou chemin via `LICHESS_MCP_STOCKFISH`) :
-
-- `analyze_game(game_id, depth)` — analyse la partie demandée et retourne un
-  **PGN annoté compatible Lichess** (commentaires `[%eval ...]`, NAGs `?`,
-  `??`, meilleur coup suggéré) plus un résumé (nombre d'erreurs par camp,
-  liste des coups critiques) ;
-- `analyze_pgn(pgn, depth)` — même analyse pour un PGN importé, utile pour
-  les parties jouées sur lichess.org sans avoir à les rejouer.
-
-## Sécurité
-
-Le serveur web est conçu pour être exposé (token bearer obligatoire sur l'API
-si `LICHESS_MCP_AUTH_TOKEN` est défini) :
-
-- **CSP stricte** (`script-src 'self'`) : aucun script externe ni inline —
-  le code de la page est entièrement local (`app.js`, `util.js`, `pieces.js`) ;
-- **Anti-XSS** : les noms de joueurs (contrôlés par l'utilisateur) sont
-  échappés avant toute injection HTML (`escapeHtml`, testé unitairement et en
-  navigateur réel avec un payload `<img onerror>`) ;
-- **En-têtes de durcissement** : `X-Content-Type-Options: nosniff`,
-  `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, pas de CORS
-  permissif ;
-- **Pas de traversée de chemin** : les routes servent des fichiers fixes ;
-  les identifiants de partie ne sont jamais utilisés pour construire un
-  chemin (simple clé de dictionnaire) ;
-- **Analyse statique** : Ruff (Python) et ESLint (JS) dans la CI ;
-- `tests/test_security.py` couvre ces garanties (traversée, méthodes,
-  en-têtes, authentification sur tous les endpoints, injection via
-  coups/FEN/identifiants).
-
-## Limites
-
-- Partie locale uniquement ; pour jouer **en ligne sur lichess.org**, il
-  faudrait ajouter l'[API Lichess](https://lichess.org/api) et un token
-  personnel (non requis ici).
-- Le moteur intégré reste modeste ; installez Stockfish pour un jeu sérieux.
+`Themes` = `mateIn1`/`mateIn2`) en conservant ce format.

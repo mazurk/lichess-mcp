@@ -1,20 +1,1983 @@
 [
-  {
-    "PuzzleId": "backRank1",
-    "FEN": "6k1/5ppp/8/8/8/8/8/R6K w - - 0 1",
-    "Moves": "a1a8",
-    "Theme": "backRankMate"
-  },
-  {
-    "PuzzleId": "queenMate1",
-    "FEN": "7k/8/5Q2/8/8/8/8/K5R1 w - - 0 1",
-    "Moves": "f6g7",
-    "Theme": "queenMate"
-  },
-  {
-    "PuzzleId": "scholar",
-    "FEN": "r1bqkbnr/pppp1ppp/2n5/4p3/2B1P3/5Q2/PPPP1PPP/RNB1K1NR w KQkq - 0 1",
-    "Moves": "f3f7",
-    "Theme": "scholarMate"
-  }
+ {
+  "PuzzleId": "backRank1",
+  "FEN": "6k1/5ppp/8/8/8/8/8/R6K w - - 0 1",
+  "Moves": "a1a8",
+  "Theme": "backRankMate",
+  "MateIn": 1
+ },
+ {
+  "PuzzleId": "queenMate1",
+  "FEN": "7k/8/5Q2/8/8/8/8/K5R1 w - - 0 1",
+  "Moves": "f6g7",
+  "Theme": "queenMate",
+  "MateIn": 1
+ },
+ {
+  "PuzzleId": "scholar",
+  "FEN": "r1bqkbnr/pppp1ppp/2n5/4p3/2B1P3/5Q2/PPPP1PPP/RNB1K1NR w KQkq - 0 1",
+  "Moves": "f3f7",
+  "Theme": "scholarMate",
+  "MateIn": 1
+ },
+ {
+  "FEN": "8/8/5R2/2Q5/8/3k4/8/5K2 w - - 0 1",
+  "Moves": "f6e6 d3d2 e6d6",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_001"
+ },
+ {
+  "FEN": "8/8/8/8/6K1/8/7k/2Q5 w - - 0 1",
+  "Moves": "g4f3 h2h3 c1h1",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_002"
+ },
+ {
+  "FEN": "8/8/8/8/4k3/q6r/8/3K4 b - - 0 1",
+  "Moves": "a3a2 d1e1 h3h1",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_003"
+ },
+ {
+  "FEN": "8/8/3q3K/3k4/1r6/8/8/8 b - - 0 1",
+  "Moves": "d6g3 h6h7 b4h4",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_004"
+ },
+ {
+  "FEN": "3K4/k7/4R3/8/4R3/8/8/8 w - - 0 1",
+  "Moves": "d8c8 a7a8 e4a4",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_005"
+ },
+ {
+  "FEN": "8/8/8/8/8/r1rk4/8/7K b - - 0 1",
+  "Moves": "c3c2 h1g1 a3a1",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_006"
+ },
+ {
+  "FEN": "8/6RK/8/8/R7/8/8/3k4 w - - 0 1",
+  "Moves": "a4a2 d1c1 g7g1",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_007"
+ },
+ {
+  "FEN": "3k4/8/8/8/7r/8/3q4/4K3 b - - 0 1",
+  "Moves": "d2a2 e1d1 h4h1",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_008"
+ },
+ {
+  "FEN": "4Q3/2K4k/8/8/8/4R3/8/8 w - - 0 1",
+  "Moves": "e3g3 h7h6 e8g6",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_009"
+ },
+ {
+  "FEN": "K7/8/8/1k6/2q5/4P3/8/8 b - - 0 1",
+  "Moves": "b5b6 a8b8 c4g8",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_010"
+ },
+ {
+  "FEN": "8/8/8/1r5k/8/8/6p1/K7 b - - 0 1",
+  "Moves": "g2g1q a1a2 g1a7",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_011"
+ },
+ {
+  "FEN": "8/6K1/q2k4/8/8/8/7r/8 b - - 0 1",
+  "Moves": "d6e7 g7g8 a6g6",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_012"
+ },
+ {
+  "FEN": "8/2R5/8/8/8/5K2/k7/6R1 w - - 0 1",
+  "Moves": "c7b7 a2a3 g1a1",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_013"
+ },
+ {
+  "FEN": "3K4/8/1k6/8/2R5/3Q4/8/8 w - - 0 1",
+  "Moves": "d3b3 b6a6 c4a4",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_014"
+ },
+ {
+  "FEN": "8/8/8/3r4/K3p3/8/3k4/8 b - - 0 1",
+  "Moves": "d2c3 a4a3 d5a5",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_015"
+ },
+ {
+  "FEN": "8/2K5/8/7k/2R5/8/5R2/8 w - - 0 1",
+  "Moves": "f2g2 h5h6 c4h4",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_016"
+ },
+ {
+  "FEN": "6k1/8/7K/8/3R4/8/8/8 w - - 0 1",
+  "Moves": "d4f4 g8h8 f4f8",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_017"
+ },
+ {
+  "FEN": "6R1/8/8/8/8/Q7/4k3/7K w - - 0 1",
+  "Moves": "g8g2 e2f1 a3c1",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_018"
+ },
+ {
+  "FEN": "8/2R1R3/8/8/4K3/8/8/3k4 w - - 0 1",
+  "Moves": "e4e3 d1e1 c7c1",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_019"
+ },
+ {
+  "FEN": "8/1k6/3Q4/8/8/2K3R1/8/8 w - - 0 1",
+  "Moves": "g3g7 b7c8 d6c7",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_020"
+ },
+ {
+  "FEN": "8/2k5/2q5/1K6/2r5/8/8/8 b - - 0 1",
+  "Moves": "c7b8 b5a5 c4a4",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_021"
+ },
+ {
+  "FEN": "8/8/8/8/2RR4/5k2/8/4K3 w - - 0 1",
+  "Moves": "d4g4 f3e3 c4c3",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_022"
+ },
+ {
+  "FEN": "5K2/8/R7/3R4/8/8/7k/8 w - - 0 1",
+  "Moves": "d5g5 h2h1 a6h6",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_023"
+ },
+ {
+  "FEN": "6K1/8/7r/2k5/8/1r6/8/8 b - - 0 1",
+  "Moves": "b3b7 g8f8 h6h8",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_024"
+ },
+ {
+  "FEN": "8/5R2/8/2k5/4K3/8/8/1R6 w - - 0 1",
+  "Moves": "f7f6 c5c4 f6c6",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_025"
+ },
+ {
+  "FEN": "7k/8/8/q5r1/8/8/8/1K6 b - - 0 1",
+  "Moves": "a5d2 b1a1 g5g1",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_026"
+ },
+ {
+  "FEN": "8/8/8/1R6/8/8/6R1/2K4k w - - 0 1",
+  "Moves": "g2g6 h1h2 b5h5",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_027"
+ },
+ {
+  "FEN": "1K3r2/8/8/4q3/8/7k/8/8 b - - 0 1",
+  "Moves": "f8f7 b8c8 e5c7",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_028"
+ },
+ {
+  "FEN": "8/8/8/8/2r5/1k6/8/4r2K b - - 0 1",
+  "Moves": "e1e2 h1g1 c4c1",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_029"
+ },
+ {
+  "FEN": "8/1K2R3/8/8/8/7k/4R3/8 w - - 0 1",
+  "Moves": "e7g7 h3h4 e2h2",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_030"
+ },
+ {
+  "FEN": "3R4/8/6R1/2k5/8/8/K7/8 w - - 0 1",
+  "Moves": "a2b3 c5b5 d8d5",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_031"
+ },
+ {
+  "FEN": "7K/8/8/8/3q4/7r/8/4k3 b - - 0 1",
+  "Moves": "d4f6 h8g8 h3h8",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_032"
+ },
+ {
+  "FEN": "8/8/7K/8/8/5P1k/5Q2/8 w - - 0 1",
+  "Moves": "f2g1 h3h4 g1h2",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_033"
+ },
+ {
+  "FEN": "K6r/8/8/8/8/4k3/8/2q5 b - - 0 1",
+  "Moves": "c1c6 a8a7 h8a8",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_034"
+ },
+ {
+  "FEN": "8/5k2/7K/8/5r2/8/8/8 b - - 0 1",
+  "Moves": "f4f5 h6h7 f5h5",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_035"
+ },
+ {
+  "FEN": "8/4k3/3r4/7K/1q6/8/8/8 b - - 0 1",
+  "Moves": "e7f6 h5h6 b4h4",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_036"
+ },
+ {
+  "FEN": "4k2K/8/8/8/8/1p6/4r3/8 b - - 0 1",
+  "Moves": "e8f7 h8h7 e2h2",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_037"
+ },
+ {
+  "FEN": "8/8/3kr3/8/8/8/3r4/3K4 b - - 0 1",
+  "Moves": "d2h2 d1c1 e6e1",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_038"
+ },
+ {
+  "FEN": "4K3/8/8/7r/4k3/8/q7/8 b - - 0 1",
+  "Moves": "h5h7 e8d8 a2g8",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_039"
+ },
+ {
+  "FEN": "8/8/8/8/8/2k2q2/8/4K3 b - - 0 1",
+  "Moves": "f3g2 e1d1 g2d2",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_040"
+ },
+ {
+  "FEN": "8/8/r7/4k3/8/8/q7/3K4 b - - 0 1",
+  "Moves": "a2f2 d1c1 a6a1",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_041"
+ },
+ {
+  "FEN": "8/7k/2r5/6r1/7K/8/8/8 b - - 0 1",
+  "Moves": "g5g1 h4h3 c6h6",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_042"
+ },
+ {
+  "FEN": "2r5/7r/5k2/8/8/1K6/8/8 b - - 0 1",
+  "Moves": "h7b7 b3a2 c8a8",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_043"
+ },
+ {
+  "FEN": "8/8/8/8/r7/4k3/8/3K1r2 b - - 0 1",
+  "Moves": "f1f2 d1e1 a4a1",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_044"
+ },
+ {
+  "FEN": "8/7p/8/4Q3/5K2/8/8/7k w - - 0 1",
+  "Moves": "f4g3 h1g1 e5a1",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_045"
+ },
+ {
+  "FEN": "8/8/8/8/5r2/8/k7/4K1r1 b - - 0 1",
+  "Moves": "g1g2 e1d1 f4f1",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_046"
+ },
+ {
+  "FEN": "1k6/8/4K3/2r5/8/8/5q2/8 b - - 0 1",
+  "Moves": "b8c7 e6e7 c5e5",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_047"
+ },
+ {
+  "FEN": "4K3/8/8/1q4k1/8/5r2/8/8 b - - 0 1",
+  "Moves": "b5b7 e8d8 f3f8",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_048"
+ },
+ {
+  "FEN": "8/5r2/8/8/4r3/2k5/8/6K1 b - - 0 1",
+  "Moves": "e4g4 g1h2 f7h7",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_049"
+ },
+ {
+  "FEN": "4kr1K/8/8/8/8/8/3r4/8 b - - 0 1",
+  "Moves": "e8f7 h8h7 d2h2",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_050"
+ },
+ {
+  "FEN": "8/8/8/8/3R4/1k6/3Q4/6K1 w - - 0 1",
+  "Moves": "d4b4 b3a3 d2b2",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_051"
+ },
+ {
+  "FEN": "8/2K5/8/8/7k/2R5/8/2Q5 w - - 0 1",
+  "Moves": "c1g1 h4h5 c3h3",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_052"
+ },
+ {
+  "FEN": "r7/8/8/K7/8/4k3/5q2/8 b - - 0 1",
+  "Moves": "a8b8 a5a6 f2a2",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_053"
+ },
+ {
+  "FEN": "8/4r3/1k6/8/1q6/8/8/1K6 b - - 0 1",
+  "Moves": "b4d2 b1a1 e7e1",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_054"
+ },
+ {
+  "FEN": "8/8/8/8/4K3/8/3R2R1/7k w - - 0 1",
+  "Moves": "g2e2 h1g1 e2e1",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_055"
+ },
+ {
+  "FEN": "1k6/7K/8/4R3/8/8/5R2/8 w - - 0 1",
+  "Moves": "f2f7 b8c8 e5e8",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_056"
+ },
+ {
+  "FEN": "8/2k5/8/8/1K6/1q6/8/1r6 b - - 0 1",
+  "Moves": "c7d6 b4a5 b3a2",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_057"
+ },
+ {
+  "FEN": "2R4K/8/8/1R6/8/8/8/6k1 w - - 0 1",
+  "Moves": "b5b2 g1f1 c8c1",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_058"
+ },
+ {
+  "FEN": "6K1/8/7q/8/8/3k4/8/4r3 b - - 0 1",
+  "Moves": "h6g6 g8f8 e1e8",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_059"
+ },
+ {
+  "FEN": "8/5q2/8/2k4K/3r4/8/8/8 b - - 0 1",
+  "Moves": "f7g8 h5h6 d4h4",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_060"
+ },
+ {
+  "FEN": "6k1/8/8/5K2/2R5/8/3R4/8 w - - 0 1",
+  "Moves": "d2d7 g8h8 c4c8",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_061"
+ },
+ {
+  "FEN": "1K2k3/8/8/5Q2/8/8/8/2R5 w - - 0 1",
+  "Moves": "c1c7 e8d8 f5c8",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_062"
+ },
+ {
+  "FEN": "8/8/8/8/3rr3/K7/3k4/8 b - - 0 1",
+  "Moves": "d4a4 a3b3 e4b4",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_063"
+ },
+ {
+  "FEN": "1r6/7K/8/8/7r/7k/8/8 b - - 0 1",
+  "Moves": "h4g4 h7h6 b8h8",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_064"
+ },
+ {
+  "FEN": "3K4/8/6r1/8/8/q7/1k6/8 b - - 0 1",
+  "Moves": "a3a7 d8c8 g6g8",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_065"
+ },
+ {
+  "FEN": "8/8/5k2/7K/8/3RR3/8/8 w - - 0 1",
+  "Moves": "d3d7 f6f5 d7f7",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_066"
+ },
+ {
+  "FEN": "8/8/3k4/7r/8/8/7r/K7 b - - 0 1",
+  "Moves": "h2f2 a1b1 h5h1",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_067"
+ },
+ {
+  "FEN": "8/8/3k4/5K2/r6r/8/8/8 b - - 0 1",
+  "Moves": "h4g4 f5f6 a4f4",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_068"
+ },
+ {
+  "FEN": "8/7K/2R5/8/8/8/2Q5/4k3 w - - 0 1",
+  "Moves": "c6h6 e1f1 h6h1",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_069"
+ },
+ {
+  "FEN": "1k6/8/K5R1/8/8/5R2/8/8 w - - 0 1",
+  "Moves": "f3f7 b8c8 g6g8",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_070"
+ },
+ {
+  "FEN": "8/1R6/8/8/8/1K6/3k4/Q7 w - - 0 1",
+  "Moves": "b7e7 d2d3 a1c3",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_071"
+ },
+ {
+  "FEN": "8/6r1/2r5/5k2/8/8/8/1K6 b - - 0 1",
+  "Moves": "g7b7 b1a1 c6a6",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_072"
+ },
+ {
+  "FEN": "8/2K5/8/5R2/8/8/Q7/6k1 w - - 0 1",
+  "Moves": "c7c6 g1h1 f5f1",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_073"
+ },
+ {
+  "FEN": "8/8/3P4/2K5/k7/8/6R1/8 w - - 0 1",
+  "Moves": "g2g3 a4a5 g3a3",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_074"
+ },
+ {
+  "FEN": "4R3/8/8/6p1/8/4K1P1/8/7k w - - 0 1",
+  "Moves": "e3f2 g5g4 e8h8",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_075"
+ },
+ {
+  "FEN": "8/8/8/7k/8/3Q3K/7R/8 w - - 0 1",
+  "Moves": "h2g2 h5h6 d3g6",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_076"
+ },
+ {
+  "FEN": "8/8/8/8/3K4/8/7Q/k7 w - - 0 1",
+  "Moves": "d4c3 a1b1 h2b2",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_077"
+ },
+ {
+  "FEN": "3k4/3r4/7K/8/8/8/8/7r b - - 0 1",
+  "Moves": "h1g1 h6h5 d7h7",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_078"
+ },
+ {
+  "FEN": "1K6/8/8/8/7k/3R4/3Q4/8 w - - 0 1",
+  "Moves": "d2g2 h4h5 d3h3",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_079"
+ },
+ {
+  "FEN": "4k3/8/4P3/8/8/4Q3/K7/8 w - - 0 1",
+  "Moves": "e3a7 e8d8 a7d7",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_080"
+ },
+ {
+  "FEN": "6RQ/8/8/8/8/6K1/8/5k2 w - - 0 1",
+  "Moves": "h8e5 f1g1 e5a1",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_081"
+ },
+ {
+  "FEN": "8/1K2r3/5r2/3k4/8/8/8/8 b - - 0 1",
+  "Moves": "d5e5 b7a8 f6f8",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_082"
+ },
+ {
+  "FEN": "8/3r4/5k2/8/2q5/8/7K/8 b - - 0 1",
+  "Moves": "c4g8 h2h1 d7h7",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_083"
+ },
+ {
+  "FEN": "8/8/8/6k1/4q3/6K1/8/5r2 b - - 0 1",
+  "Moves": "e4e2 g3h3 f1f3",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_084"
+ },
+ {
+  "FEN": "3k4/7K/8/8/6R1/8/6Q1/8 w - - 0 1",
+  "Moves": "g4g7 d8c8 g2a8",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_085"
+ },
+ {
+  "FEN": "8/P7/5Q2/7k/8/2K5/8/8 w - - 0 1",
+  "Moves": "a7a8q h5g4 a8f3",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_086"
+ },
+ {
+  "FEN": "4K3/2k5/5q2/8/8/2P5/8/8 b - - 0 1",
+  "Moves": "c7d6 c3c4 f6e7",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_087"
+ },
+ {
+  "FEN": "8/2r5/K5k1/1r6/8/8/8/8 b - - 0 1",
+  "Moves": "b5b2 a6a5 c7a7",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_088"
+ },
+ {
+  "FEN": "8/6P1/5Q2/8/6K1/8/8/6k1 w - - 0 1",
+  "Moves": "g4g3 g1h1 f6a1",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_089"
+ },
+ {
+  "FEN": "8/8/7K/1p2k3/8/6q1/8/8 b - - 0 1",
+  "Moves": "e5f6 h6h5 g3g5",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_090"
+ },
+ {
+  "FEN": "2k5/8/4KR2/8/8/7Q/8/8 w - - 0 1",
+  "Moves": "f6f7 c8d8 h3h8",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_091"
+ },
+ {
+  "FEN": "2k5/8/8/6KR/8/8/8/3R4 w - - 0 1",
+  "Moves": "h5h7 c8b8 d1d8",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_092"
+ },
+ {
+  "FEN": "1k6/8/8/8/2r5/8/r7/2K5 b - - 0 1",
+  "Moves": "c4b4 c1d1 b4b1",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_093"
+ },
+ {
+  "FEN": "8/8/8/8/8/2k2r2/5K1p/8 b - - 0 1",
+  "Moves": "h2h1q f2e2 h1f1",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_094"
+ },
+ {
+  "FEN": "3k4/8/8/8/4r3/3r4/8/K7 b - - 0 1",
+  "Moves": "e4e2 a1b1 d3d1",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_095"
+ },
+ {
+  "FEN": "7q/8/8/8/k7/8/8/2Kr4 b - - 0 1",
+  "Moves": "h8a1 c1c2 a1c1",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_096"
+ },
+ {
+  "FEN": "q7/3k4/8/8/8/8/3p4/5K2 b - - 0 1",
+  "Moves": "d2d1q f1f2 a8f3",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_097"
+ },
+ {
+  "FEN": "8/8/q1k5/8/8/8/rK6/8 b - - 0 1",
+  "Moves": "a6a3 b2b1 a3b2",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_098"
+ },
+ {
+  "FEN": "8/8/3r4/8/4k3/8/8/4K3 b - - 0 1",
+  "Moves": "e4f3 e1f1 d6d1",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_099"
+ },
+ {
+  "FEN": "5k2/8/4Q3/8/8/2R2K2/8/8 w - - 0 1",
+  "Moves": "e6d7 f8g8 c3c8",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_100"
+ },
+ {
+  "FEN": "2K5/8/8/1k6/8/8/1r6/3q4 b - - 0 1",
+  "Moves": "b5b6 c8b8 d1d8",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_101"
+ },
+ {
+  "FEN": "8/8/R7/7k/1K6/8/1R6/8 w - - 0 1",
+  "Moves": "b2g2 h5h4 a6h6",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_102"
+ },
+ {
+  "FEN": "6R1/5K2/7R/8/8/8/8/2k5 w - - 0 1",
+  "Moves": "g8g2 c1d1 h6h1",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_103"
+ },
+ {
+  "FEN": "2K5/8/3R4/7k/8/8/6R1/8 w - - 0 1",
+  "Moves": "d6c6 h5h4 c6h6",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_104"
+ },
+ {
+  "FEN": "1k6/4K3/7q/8/8/2r5/8/8 b - - 0 1",
+  "Moves": "c3c7 e7e8 h6h8",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_105"
+ },
+ {
+  "FEN": "8/8/8/8/8/1r4r1/8/4k1K1 b - - 0 1",
+  "Moves": "g3h3 g1g2 b3g3",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_106"
+ },
+ {
+  "FEN": "8/8/8/8/8/8/5R1R/1k3K2 w - - 0 1",
+  "Moves": "f2a2 b1c1 a2a1",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_107"
+ },
+ {
+  "FEN": "4K3/7k/Q7/8/8/8/8/8 w - - 0 1",
+  "Moves": "e8f7 h7h8 a6h6",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_108"
+ },
+ {
+  "FEN": "8/7k/1R6/3K4/3Q4/8/8/8 w - - 0 1",
+  "Moves": "d4g4 h7h8 b6h6",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_109"
+ },
+ {
+  "FEN": "8/5k2/8/6K1/2q5/8/8/r7 b - - 0 1",
+  "Moves": "a1a5 g5h6 c4h4",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_110"
+ },
+ {
+  "FEN": "8/8/8/2k5/K2r4/8/8/8 b - - 0 1",
+  "Moves": "d4d3 a4a5 d3a3",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_111"
+ },
+ {
+  "FEN": "8/1k6/8/K3p3/5r2/8/8/8 b - - 0 1",
+  "Moves": "b7c6 a5a6 f4a4",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_112"
+ },
+ {
+  "FEN": "8/8/8/8/K1r5/8/8/1k3q2 b - - 0 1",
+  "Moves": "f1f5 a4b3 f5d3",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_113"
+ },
+ {
+  "FEN": "8/k7/8/3K4/7R/2R5/8/8 w - - 0 1",
+  "Moves": "c3b3 a7a6 h4a4",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_114"
+ },
+ {
+  "FEN": "7K/8/8/r7/8/8/8/kr6 b - - 0 1",
+  "Moves": "a5a7 h8g8 b1b8",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_115"
+ },
+ {
+  "FEN": "8/8/3r4/3q4/K5k1/8/8/8 b - - 0 1",
+  "Moves": "d6b6 a4a3 d5a5",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_116"
+ },
+ {
+  "FEN": "8/8/8/8/8/1K1R2R1/7k/8 w - - 0 1",
+  "Moves": "g3g4 h2h1 d3h3",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_117"
+ },
+ {
+  "FEN": "8/8/5q2/8/8/7k/8/4K1r1 b - - 0 1",
+  "Moves": "g1g2 e1d1 f6a1",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_118"
+ },
+ {
+  "FEN": "1k6/8/6q1/8/8/2r5/8/5K2 b - - 0 1",
+  "Moves": "c3c2 f1e1 g6g1",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_119"
+ },
+ {
+  "FEN": "8/8/7K/8/8/8/7k/1q3r2 b - - 0 1",
+  "Moves": "f1g1 h6h5 b1h7",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_120"
+ },
+ {
+  "FEN": "q7/6k1/8/8/8/8/K7/2r5 b - - 0 1",
+  "Moves": "a8b7 a2a3 c1a1",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_121"
+ },
+ {
+  "FEN": "4k2K/8/8/8/8/1r6/7p/8 b - - 0 1",
+  "Moves": "e8f7 h8h7 h2h1q",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_122"
+ },
+ {
+  "FEN": "3q4/2k5/8/1K6/1r6/8/8/8 b - - 0 1",
+  "Moves": "d8b8 b5c5 b8b5",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_123"
+ },
+ {
+  "FEN": "8/8/8/6k1/8/5K2/7R/1Q6 w - - 0 1",
+  "Moves": "b1b6 g5f5 h2h5",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_124"
+ },
+ {
+  "FEN": "8/8/8/K7/8/R5Q1/3k4/8 w - - 0 1",
+  "Moves": "g3g2 d2c1 a3a1",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_125"
+ },
+ {
+  "FEN": "7K/5q2/8/7k/8/8/P7/8 b - - 0 1",
+  "Moves": "h5g6 a2a4 f7e8",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_126"
+ },
+ {
+  "FEN": "8/7P/8/8/8/4Q3/3K3k/8 w - - 0 1",
+  "Moves": "h7h8q h2g2 h8h3",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_127"
+ },
+ {
+  "FEN": "8/k3K3/5R2/1R6/8/8/8/8 w - - 0 1",
+  "Moves": "b5b2 a7a8 f6a6",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_128"
+ },
+ {
+  "FEN": "8/8/8/8/k1K5/1r6/2Q5/8 w - - 0 1",
+  "Moves": "c2b3 a4a5 b3b5",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_129"
+ },
+ {
+  "FEN": "8/8/8/2q5/5r2/8/7K/k7 b - - 0 1",
+  "Moves": "c5f2 h2h1 f4h4",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_130"
+ },
+ {
+  "FEN": "8/6K1/8/k7/6Q1/2R5/8/8 w - - 0 1",
+  "Moves": "c3b3 a5a6 g4a4",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_131"
+ },
+ {
+  "FEN": "2R5/8/6R1/8/4K3/8/8/1k6 w - - 0 1",
+  "Moves": "g6b6 b1a1 c8a8",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_132"
+ },
+ {
+  "FEN": "8/8/1k6/8/1r3r2/8/8/K7 b - - 0 1",
+  "Moves": "b4b5 a1a2 f4a4",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_133"
+ },
+ {
+  "FEN": "1K6/3k4/8/8/8/3r4/7q/8 b - - 0 1",
+  "Moves": "d3b3 b8a7 h2a2",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_134"
+ },
+ {
+  "FEN": "8/6q1/8/4k3/8/8/5K2/7r b - - 0 1",
+  "Moves": "e5e4 f2e2 g7g2",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_135"
+ },
+ {
+  "FEN": "k7/8/8/4KR1Q/8/8/8/8 w - - 0 1",
+  "Moves": "f5f7 a8b8 h5h8",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_136"
+ },
+ {
+  "FEN": "8/3k3r/6q1/8/8/8/8/4K3 b - - 0 1",
+  "Moves": "g6c2 e1f1 h7h1",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_137"
+ },
+ {
+  "FEN": "8/8/7K/8/5rq1/8/8/4k3 b - - 0 1",
+  "Moves": "f4f5 h6h7 f5h5",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_138"
+ },
+ {
+  "FEN": "2K5/2r5/8/8/8/1k4q1/8/8 b - - 0 1",
+  "Moves": "c7g7 c8d8 g3b8",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_139"
+ },
+ {
+  "FEN": "8/1K6/8/k7/8/2r5/7r/8 b - - 0 1",
+  "Moves": "h2h8 b7a7 c3c7",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_140"
+ },
+ {
+  "FEN": "8/8/8/5rK1/8/8/5k2/6r1 b - - 0 1",
+  "Moves": "f5f8 g5h6 f8h8",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_141"
+ },
+ {
+  "FEN": "6k1/8/K7/8/1q6/8/2p5/8 b - - 0 1",
+  "Moves": "c2c1q a6a7 c1a1",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_142"
+ },
+ {
+  "FEN": "6R1/8/2K5/8/8/7k/2R5/8 w - - 0 1",
+  "Moves": "c2d2 h3h4 d2h2",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_143"
+ },
+ {
+  "FEN": "8/8/8/8/5R2/4K3/8/4k3 w - - 0 1",
+  "Moves": "e3d3 e1d1 f4f1",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_144"
+ },
+ {
+  "FEN": "4kr2/6q1/8/8/8/8/8/1K6 b - - 0 1",
+  "Moves": "g7g2 b1c1 f8f1",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_145"
+ },
+ {
+  "FEN": "5q2/8/K4k2/8/8/8/3r4/8 b - - 0 1",
+  "Moves": "f8b8 a6a5 d2a2",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_146"
+ },
+ {
+  "FEN": "7R/k7/8/8/8/8/7R/4K3 w - - 0 1",
+  "Moves": "h2b2 a7a6 h8a8",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_147"
+ },
+ {
+  "FEN": "8/k1P4K/8/8/8/8/2Q5/8 w - - 0 1",
+  "Moves": "c2c5 a7a8 c7c8q",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_148"
+ },
+ {
+  "FEN": "8/8/7r/8/2k5/8/8/3r2K1 b - - 0 1",
+  "Moves": "d1d2 g1f1 h6h1",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_149"
+ },
+ {
+  "FEN": "4r3/r7/8/8/3K4/8/2k5/8 b - - 0 1",
+  "Moves": "a7a5 d4c4 e8e4",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_150"
+ },
+ {
+  "FEN": "7K/8/8/8/3R1Q2/8/4k3/8 w - - 0 1",
+  "Moves": "d4d2 e2e1 f4f2",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_151"
+ },
+ {
+  "FEN": "K7/8/8/8/4r3/4rk2/8/8 b - - 0 1",
+  "Moves": "e3b3 a8a7 e4a4",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_152"
+ },
+ {
+  "FEN": "8/4R3/1k6/8/K7/8/2R5/8 w - - 0 1",
+  "Moves": "c2c8 b6a6 c8c6",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_153"
+ },
+ {
+  "FEN": "8/1Q6/8/8/5KP1/8/8/4k3 w - - 0 1",
+  "Moves": "f4e3 e1f1 b7h1",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_154"
+ },
+ {
+  "FEN": "8/8/8/3R4/8/6R1/3K3k/8 w - - 0 1",
+  "Moves": "g3g6 h2h1 d5h5",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_155"
+ },
+ {
+  "FEN": "6k1/8/3R4/8/6K1/8/7R/8 w - - 0 1",
+  "Moves": "d6d7 g8f8 h2h8",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_156"
+ },
+ {
+  "FEN": "1q6/8/6k1/8/1K6/8/8/2r5 b - - 0 1",
+  "Moves": "g6f5 b4a5 c1a1",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_157"
+ },
+ {
+  "FEN": "8/5r2/6k1/2r5/8/8/8/7K b - - 0 1",
+  "Moves": "c5g5 h1h2 f7h7",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_158"
+ },
+ {
+  "FEN": "5K2/3R4/8/8/8/2R5/7k/8 w - - 0 1",
+  "Moves": "d7d2 h2g1 c3c1",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_159"
+ },
+ {
+  "FEN": "8/q7/3K4/5k2/8/8/8/2r5 b - - 0 1",
+  "Moves": "a7c7 d6d5 c7d7",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_160"
+ },
+ {
+  "FEN": "8/8/3k4/8/8/1q5r/8/7K b - - 0 1",
+  "Moves": "b3f3 h1g1 h3h1",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_161"
+ },
+ {
+  "FEN": "8/k5P1/8/8/8/3K4/1Q6/8 w - - 0 1",
+  "Moves": "g7g8q a7a6 g8a8",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_162"
+ },
+ {
+  "FEN": "8/8/8/8/8/8/4q2K/4k3 b - - 0 1",
+  "Moves": "e1f2 h2h1 e2h5",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_163"
+ },
+ {
+  "FEN": "8/2R5/8/8/2K5/8/5Q2/2k5 w - - 0 1",
+  "Moves": "c7b7 c1d1 b7b1",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_164"
+ },
+ {
+  "FEN": "8/2r5/3k4/8/8/8/Kq6/8 b - - 0 1",
+  "Moves": "b2b4 a2a1 c7a7",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_165"
+ },
+ {
+  "FEN": "8/4k3/8/6q1/4K3/6r1/8/8 b - - 0 1",
+  "Moves": "e7d6 e4d4 g5h4",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_166"
+ },
+ {
+  "FEN": "8/8/8/8/7k/3p4/8/3K2q1 b - - 0 1",
+  "Moves": "g1g2 d1e1 g2e2",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_167"
+ },
+ {
+  "FEN": "3K4/7P/6k1/4Q3/8/8/8/8 w - - 0 1",
+  "Moves": "h7h8q g6f7 h8g7",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_168"
+ },
+ {
+  "FEN": "8/8/8/8/1r1k4/6r1/K7/8 b - - 0 1",
+  "Moves": "d4c4 a2a1 g3a3",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_169"
+ },
+ {
+  "FEN": "3q4/8/8/8/8/4k3/8/7K b - - 0 1",
+  "Moves": "e3f2 h1h2 d8h4",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_170"
+ },
+ {
+  "FEN": "3K4/4P3/6Q1/8/8/8/8/7k w - - 0 1",
+  "Moves": "e7e8q h1h2 e8h8",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_171"
+ },
+ {
+  "FEN": "8/8/8/3r4/2k5/8/5p2/2K5 b - - 0 1",
+  "Moves": "c4b3 c1b1 f2f1q",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_172"
+ },
+ {
+  "FEN": "8/7k/K3r3/8/8/8/1r6/8 b - - 0 1",
+  "Moves": "e6e1 a6a5 e1a1",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_173"
+ },
+ {
+  "FEN": "8/8/1R6/8/Q7/4k3/6K1/8 w - - 0 1",
+  "Moves": "b6d6 e3e2 a4e4",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_174"
+ },
+ {
+  "FEN": "8/3r4/8/8/8/8/K4r1k/8 b - - 0 1",
+  "Moves": "d7d3 a2a1 d3d1",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_175"
+ },
+ {
+  "FEN": "7k/Q2K4/8/8/8/8/8/4R3 w - - 0 1",
+  "Moves": "d7c6 h8g8 e1e8",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_176"
+ },
+ {
+  "FEN": "8/8/4r3/4q3/6K1/3k4/8/8 b - - 0 1",
+  "Moves": "e6g6 g4h4 e5h2",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_177"
+ },
+ {
+  "FEN": "1K6/8/6k1/7r/8/8/2r5/8 b - - 0 1",
+  "Moves": "h5b5 b8a7 c2a2",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_178"
+ },
+ {
+  "FEN": "2K5/8/k7/8/6Q1/8/8/8 w - - 0 1",
+  "Moves": "g4b4 a6a7 b4a5",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_179"
+ },
+ {
+  "FEN": "8/8/4R3/8/8/3K4/7P/2k5 w - - 0 1",
+  "Moves": "e6b6 c1d1 b6b1",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_180"
+ },
+ {
+  "FEN": "6k1/4K3/8/8/8/7R/8/8 w - - 0 1",
+  "Moves": "e7f6 g8f8 h3h8",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_181"
+ },
+ {
+  "FEN": "2K5/7k/4R3/8/2R5/8/8/8 w - - 0 1",
+  "Moves": "c4c7 h7g8 e6e8",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_182"
+ },
+ {
+  "FEN": "4r1k1/K7/8/8/8/8/5r2/8 b - - 0 1",
+  "Moves": "f2b2 a7a6 e8a8",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_183"
+ },
+ {
+  "FEN": "2Q2R2/8/8/8/8/8/K6k/8 w - - 0 1",
+  "Moves": "f8g8 h2h1 c8h3",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_184"
+ },
+ {
+  "FEN": "1R6/8/8/7k/8/8/R6K/8 w - - 0 1",
+  "Moves": "a2g2 h5h4 b8h8",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_185"
+ },
+ {
+  "FEN": "7k/K7/8/8/8/1q6/1p6/8 b - - 0 1",
+  "Moves": "b2b1q a7a6 b3b6",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_186"
+ },
+ {
+  "FEN": "8/K5r1/8/1r6/8/4k3/8/8 b - - 0 1",
+  "Moves": "g7g6 a7a8 g6a6",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_187"
+ },
+ {
+  "FEN": "8/2q5/6r1/8/8/6K1/3k4/8 b - - 0 1",
+  "Moves": "c7e5 g3h4 e5h8",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_188"
+ },
+ {
+  "FEN": "1k6/8/K7/r7/8/q7/8/8 b - - 0 1",
+  "Moves": "a5h5 a6b6 a3d6",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_189"
+ },
+ {
+  "FEN": "8/k7/8/8/5R2/5R2/8/3K4 w - - 0 1",
+  "Moves": "f3b3 a7a6 f4a4",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_190"
+ },
+ {
+  "FEN": "4K3/3r4/8/8/7k/8/3r4/8 b - - 0 1",
+  "Moves": "d7c7 e8f8 d2d8",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_191"
+ },
+ {
+  "FEN": "3Q4/k3P3/2K5/8/8/8/8/8 w - - 0 1",
+  "Moves": "d8a5 a7b8 e7e8q",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_192"
+ },
+ {
+  "FEN": "8/8/q7/8/8/5rk1/2K5/8 b - - 0 1",
+  "Moves": "a6e2 c2c1 f3f1",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_193"
+ },
+ {
+  "FEN": "8/4q3/3k4/1r6/8/8/1K6/8 b - - 0 1",
+  "Moves": "e7c7 b2a3 c7a7",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_194"
+ },
+ {
+  "FEN": "8/5R2/2R5/8/8/8/6K1/4k3 w - - 0 1",
+  "Moves": "c6d6 e1e2 f7e7",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_195"
+ },
+ {
+  "FEN": "K7/6r1/8/3k4/8/3q4/8/8 b - - 0 1",
+  "Moves": "d3a6 a8b8 a6b7",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_196"
+ },
+ {
+  "FEN": "4R3/k7/8/4K3/8/8/8/6R1 w - - 0 1",
+  "Moves": "g1b1 a7a6 e8a8",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_197"
+ },
+ {
+  "FEN": "4K3/8/8/8/7r/4k3/8/5r2 b - - 0 1",
+  "Moves": "h4h7 e8d8 f1f8",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_198"
+ },
+ {
+  "FEN": "8/8/4r3/8/8/8/6r1/4K2k b - - 0 1",
+  "Moves": "e6b6 e1d1 b6b1",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_199"
+ },
+ {
+  "FEN": "3k4/8/8/8/5r2/7r/8/K7 b - - 0 1",
+  "Moves": "f4f2 a1b1 h3h1",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_200"
+ },
+ {
+  "FEN": "1k6/8/6R1/8/4R3/3K4/8/8 w - - 0 1",
+  "Moves": "e4e7 b8c8 g6g8",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_201"
+ },
+ {
+  "FEN": "6K1/8/5k2/8/q7/8/1p6/8 b - - 0 1",
+  "Moves": "b2b1q g8h8 a4a8",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_202"
+ },
+ {
+  "FEN": "7Q/K7/8/5R2/8/8/6k1/8 w - - 0 1",
+  "Moves": "h8g8 g2h1 f5h5",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_203"
+ },
+ {
+  "FEN": "R7/K7/5Q2/8/8/k7/8/8 w - - 0 1",
+  "Moves": "a8b8 a3a2 f6b2",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_204"
+ },
+ {
+  "FEN": "8/6K1/3r4/3q4/6k1/8/8/8 b - - 0 1",
+  "Moves": "d5b7 g7g8 d6d8",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_205"
+ },
+ {
+  "FEN": "8/7K/8/8/8/8/2r5/2q4k b - - 0 1",
+  "Moves": "c2g2 h7h8 c1h6",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_206"
+ },
+ {
+  "FEN": "8/8/p7/8/2K5/8/4Q3/2k5 w - - 0 1",
+  "Moves": "c4c3 a6a5 e2e1",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_207"
+ },
+ {
+  "FEN": "4q3/8/8/8/8/K7/3r4/k7 b - - 0 1",
+  "Moves": "e8b8 a3a4 d2a2",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_208"
+ },
+ {
+  "FEN": "8/k7/2K2q2/8/8/8/1r6/8 b - - 0 1",
+  "Moves": "f6d4 c6c7 b2c2",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_209"
+ },
+ {
+  "FEN": "8/r7/8/8/1p6/1k6/8/1K6 b - - 0 1",
+  "Moves": "b3c3 b1c1 a7a1",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_210"
+ },
+ {
+  "FEN": "1K6/8/8/2k5/2r5/8/8/1r6 b - - 0 1",
+  "Moves": "c5d5 b8a7 c4a4",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_211"
+ },
+ {
+  "FEN": "8/8/k7/8/8/6r1/8/2K4r b - - 0 1",
+  "Moves": "h1h2 c1b1 g3g1",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_212"
+ },
+ {
+  "FEN": "K7/8/8/k7/8/8/3R4/6R1 w - - 0 1",
+  "Moves": "g1b1 a5a6 d2a2",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_213"
+ },
+ {
+  "FEN": "3R4/8/8/8/8/4k3/6K1/3R4 w - - 0 1",
+  "Moves": "d1d4 e3e2 d8e8",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_214"
+ },
+ {
+  "FEN": "8/1Q6/8/k7/8/8/4KR2/8 w - - 0 1",
+  "Moves": "e2e3 a5a4 f2a2",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_215"
+ },
+ {
+  "FEN": "2q3k1/8/8/1r6/8/8/8/5K2 b - - 0 1",
+  "Moves": "b5b2 f1e1 c8c1",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_216"
+ },
+ {
+  "FEN": "8/8/6q1/8/6r1/8/6k1/4K3 b - - 0 1",
+  "Moves": "g4d4 e1e2 g6e6",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_217"
+ },
+ {
+  "FEN": "2k5/K7/8/8/8/8/4p3/3r4 b - - 0 1",
+  "Moves": "d1d6 a7a8 d6a6",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_218"
+ },
+ {
+  "FEN": "8/8/8/5r2/8/8/2k4K/4q3 b - - 0 1",
+  "Moves": "f5g5 h2h3 e1h1",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_219"
+ },
+ {
+  "FEN": "1k6/8/1p6/1K6/8/1q6/8/8 b - - 0 1",
+  "Moves": "b8c7 b5a6 b3a4",
+  "MateIn": 2,
+  "Theme": "mateIn2",
+  "PuzzleId": "mate2_220"
+ },
+ {
+  "FEN": "1K6/8/1k6/6q1/8/8/8/8 b - - 0 1",
+  "Moves": "g5d8",
+  "MateIn": 1,
+  "Theme": "mateIn1",
+  "PuzzleId": "mate1_001"
+ },
+ {
+  "FEN": "8/8/4R3/8/8/k7/1R6/2K5 w - - 0 1",
+  "Moves": "e6a6",
+  "MateIn": 1,
+  "Theme": "mateIn1",
+  "PuzzleId": "mate1_002"
+ },
+ {
+  "FEN": "6r1/8/7K/2k5/8/8/3r4/8 b - - 0 1",
+  "Moves": "d2h2",
+  "MateIn": 1,
+  "Theme": "mateIn1",
+  "PuzzleId": "mate1_003"
+ },
+ {
+  "FEN": "8/8/8/8/8/5R2/R7/4K2k w - - 0 1",
+  "Moves": "f3f1",
+  "MateIn": 1,
+  "Theme": "mateIn1",
+  "PuzzleId": "mate1_004"
+ },
+ {
+  "FEN": "1K6/5Q2/8/8/8/k7/P7/8 w - - 0 1",
+  "Moves": "f7b3",
+  "MateIn": 1,
+  "Theme": "mateIn1",
+  "PuzzleId": "mate1_005"
+ },
+ {
+  "FEN": "4k3/8/3K4/8/7Q/1R6/8/8 w - - 0 1",
+  "Moves": "h4e7",
+  "MateIn": 1,
+  "Theme": "mateIn1",
+  "PuzzleId": "mate1_006"
+ },
+ {
+  "FEN": "1K6/7r/1k1p4/8/8/8/8/8 b - - 0 1",
+  "Moves": "h7h8",
+  "MateIn": 1,
+  "Theme": "mateIn1",
+  "PuzzleId": "mate1_007"
+ },
+ {
+  "FEN": "8/4k3/7r/8/8/8/1q6/5K2 b - - 0 1",
+  "Moves": "h6h1",
+  "MateIn": 1,
+  "Theme": "mateIn1",
+  "PuzzleId": "mate1_008"
+ },
+ {
+  "FEN": "7k/8/6K1/5P2/5p2/2R5/8/8 w - - 0 1",
+  "Moves": "c3c8",
+  "MateIn": 1,
+  "Theme": "mateIn1",
+  "PuzzleId": "mate1_009"
+ },
+ {
+  "FEN": "8/8/8/1R5K/1R6/8/k7/8 w - - 0 1",
+  "Moves": "b4a4",
+  "MateIn": 1,
+  "Theme": "mateIn1",
+  "PuzzleId": "mate1_010"
+ },
+ {
+  "FEN": "8/7q/5r1K/8/3k4/8/8/8 b - - 0 1",
+  "Moves": "h7g6",
+  "MateIn": 1,
+  "Theme": "mateIn1",
+  "PuzzleId": "mate1_011"
+ },
+ {
+  "FEN": "1k6/8/8/1q6/6r1/7K/8/8 b - - 0 1",
+  "Moves": "b5h5",
+  "MateIn": 1,
+  "Theme": "mateIn1",
+  "PuzzleId": "mate1_012"
+ },
+ {
+  "FEN": "7k/1R6/8/8/5R2/8/7K/8 w - - 0 1",
+  "Moves": "f4f8",
+  "MateIn": 1,
+  "Theme": "mateIn1",
+  "PuzzleId": "mate1_013"
+ },
+ {
+  "FEN": "1K3r2/8/1k2p3/5P2/8/8/8/8 b - - 0 1",
+  "Moves": "f8d8",
+  "MateIn": 1,
+  "Theme": "mateIn1",
+  "PuzzleId": "mate1_014"
+ },
+ {
+  "FEN": "q7/8/7P/8/8/k7/8/K7 b - - 0 1",
+  "Moves": "a8h1",
+  "MateIn": 1,
+  "Theme": "mateIn1",
+  "PuzzleId": "mate1_015"
+ },
+ {
+  "FEN": "7q/8/8/8/5k1K/8/8/8 b - - 0 1",
+  "Moves": "h8h7",
+  "MateIn": 1,
+  "Theme": "mateIn1",
+  "PuzzleId": "mate1_016"
+ },
+ {
+  "FEN": "4K3/r7/8/8/2k5/1r6/8/8 b - - 0 1",
+  "Moves": "b3b8",
+  "MateIn": 1,
+  "Theme": "mateIn1",
+  "PuzzleId": "mate1_017"
+ },
+ {
+  "FEN": "K7/8/8/8/8/7r/1q1k4/8 b - - 0 1",
+  "Moves": "h3a3",
+  "MateIn": 1,
+  "Theme": "mateIn1",
+  "PuzzleId": "mate1_018"
+ },
+ {
+  "FEN": "6K1/8/6k1/8/7R/8/q7/8 b - - 0 1",
+  "Moves": "a2a8",
+  "MateIn": 1,
+  "Theme": "mateIn1",
+  "PuzzleId": "mate1_019"
+ },
+ {
+  "FEN": "8/8/8/8/8/4Q3/5K1k/8 w - - 0 1",
+  "Moves": "e3h6",
+  "MateIn": 1,
+  "Theme": "mateIn1",
+  "PuzzleId": "mate1_020"
+ },
+ {
+  "FEN": "8/8/2K5/8/8/6R1/5Q2/2k5 w - - 0 1",
+  "Moves": "g3g1",
+  "MateIn": 1,
+  "Theme": "mateIn1",
+  "PuzzleId": "mate1_021"
+ },
+ {
+  "FEN": "8/8/8/8/2R5/6R1/8/4K2k w - - 0 1",
+  "Moves": "c4h4",
+  "MateIn": 1,
+  "Theme": "mateIn1",
+  "PuzzleId": "mate1_022"
+ },
+ {
+  "FEN": "8/8/8/7Q/1K6/8/R7/2k5 w - - 0 1",
+  "Moves": "h5h1",
+  "MateIn": 1,
+  "Theme": "mateIn1",
+  "PuzzleId": "mate1_023"
+ },
+ {
+  "FEN": "r7/8/8/8/8/1K1q4/3k4/8 b - - 0 1",
+  "Moves": "d3c3",
+  "MateIn": 1,
+  "Theme": "mateIn1",
+  "PuzzleId": "mate1_024"
+ },
+ {
+  "FEN": "8/8/8/8/2q5/8/1r6/4k2K b - - 0 1",
+  "Moves": "c4f1",
+  "MateIn": 1,
+  "Theme": "mateIn1",
+  "PuzzleId": "mate1_025"
+ },
+ {
+  "FEN": "k1K5/8/8/4R3/8/1Q6/8/8 w - - 0 1",
+  "Moves": "b3b7",
+  "MateIn": 1,
+  "Theme": "mateIn1",
+  "PuzzleId": "mate1_026"
+ },
+ {
+  "FEN": "2q5/7k/1r6/8/8/K7/8/8 b - - 0 1",
+  "Moves": "c8a6",
+  "MateIn": 1,
+  "Theme": "mateIn1",
+  "PuzzleId": "mate1_027"
+ },
+ {
+  "FEN": "8/8/2P2K1k/8/1R6/8/8/8 w - - 0 1",
+  "Moves": "b4h4",
+  "MateIn": 1,
+  "Theme": "mateIn1",
+  "PuzzleId": "mate1_028"
+ },
+ {
+  "FEN": "8/1R6/8/k7/8/4K3/6Q1/8 w - - 0 1",
+  "Moves": "g2a2",
+  "MateIn": 1,
+  "Theme": "mateIn1",
+  "PuzzleId": "mate1_029"
+ },
+ {
+  "FEN": "8/8/8/4R3/8/K7/8/k7 w - - 0 1",
+  "Moves": "e5e1",
+  "MateIn": 1,
+  "Theme": "mateIn1",
+  "PuzzleId": "mate1_030"
+ },
+ {
+  "FEN": "8/5K2/8/8/8/8/1Q5R/4k3 w - - 0 1",
+  "Moves": "h2h1",
+  "MateIn": 1,
+  "Theme": "mateIn1",
+  "PuzzleId": "mate1_031"
+ },
+ {
+  "FEN": "6K1/4r3/8/2q5/8/1k6/8/8 b - - 0 1",
+  "Moves": "c5c8",
+  "MateIn": 1,
+  "Theme": "mateIn1",
+  "PuzzleId": "mate1_032"
+ },
+ {
+  "FEN": "8/8/2K5/k7/4P3/8/8/2Q5 w - - 0 1",
+  "Moves": "c1a3",
+  "MateIn": 1,
+  "Theme": "mateIn1",
+  "PuzzleId": "mate1_033"
+ },
+ {
+  "FEN": "4k3/1R4P1/8/8/8/5K2/8/8 w - - 0 1",
+  "Moves": "g7g8q",
+  "MateIn": 1,
+  "Theme": "mateIn1",
+  "PuzzleId": "mate1_034"
+ },
+ {
+  "FEN": "8/7k/8/2p5/K7/8/3q4/8 b - - 0 1",
+  "Moves": "d2b4",
+  "MateIn": 1,
+  "Theme": "mateIn1",
+  "PuzzleId": "mate1_035"
+ },
+ {
+  "FEN": "8/8/8/4q3/3r4/K1k5/8/8 b - - 0 1",
+  "Moves": "e5a5",
+  "MateIn": 1,
+  "Theme": "mateIn1",
+  "PuzzleId": "mate1_036"
+ },
+ {
+  "FEN": "8/8/8/8/7r/8/2k1q3/7K b - - 0 1",
+  "Moves": "e2h2",
+  "MateIn": 1,
+  "Theme": "mateIn1",
+  "PuzzleId": "mate1_037"
+ },
+ {
+  "FEN": "8/8/8/7k/K7/8/6R1/6R1 w - - 0 1",
+  "Moves": "g1h1",
+  "MateIn": 1,
+  "Theme": "mateIn1",
+  "PuzzleId": "mate1_038"
+ },
+ {
+  "FEN": "8/Q7/8/8/6p1/3K4/8/3k4 w - - 0 1",
+  "Moves": "a7a1",
+  "MateIn": 1,
+  "Theme": "mateIn1",
+  "PuzzleId": "mate1_039"
+ },
+ {
+  "FEN": "8/8/8/8/r7/r5k1/8/6K1 b - - 0 1",
+  "Moves": "a3a1",
+  "MateIn": 1,
+  "Theme": "mateIn1",
+  "PuzzleId": "mate1_040"
+ },
+ {
+  "FEN": "5K2/2r5/1r6/8/8/8/k7/8 b - - 0 1",
+  "Moves": "b6b8",
+  "MateIn": 1,
+  "Theme": "mateIn1",
+  "PuzzleId": "mate1_041"
+ },
+ {
+  "FEN": "8/5k1K/8/8/8/8/1q3P2/8 b - - 0 1",
+  "Moves": "b2g7",
+  "MateIn": 1,
+  "Theme": "mateIn1",
+  "PuzzleId": "mate1_042"
+ },
+ {
+  "FEN": "k7/2K5/r3R3/8/8/8/8/8 w - - 0 1",
+  "Moves": "e6a6",
+  "MateIn": 1,
+  "Theme": "mateIn1",
+  "PuzzleId": "mate1_043"
+ },
+ {
+  "FEN": "3K1k2/8/3r4/8/8/8/1q6/8 b - - 0 1",
+  "Moves": "b2b8",
+  "MateIn": 1,
+  "Theme": "mateIn1",
+  "PuzzleId": "mate1_044"
+ },
+ {
+  "FEN": "6Q1/8/8/8/8/3K4/8/3k4 w - - 0 1",
+  "Moves": "g8g1",
+  "MateIn": 1,
+  "Theme": "mateIn1",
+  "PuzzleId": "mate1_045"
+ },
+ {
+  "FEN": "8/8/8/8/8/2q5/K1k3P1/8 b - - 0 1",
+  "Moves": "c3b2",
+  "MateIn": 1,
+  "Theme": "mateIn1",
+  "PuzzleId": "mate1_046"
+ },
+ {
+  "FEN": "8/8/K1q4r/8/8/8/8/k7 b - - 0 1",
+  "Moves": "c6b6",
+  "MateIn": 1,
+  "Theme": "mateIn1",
+  "PuzzleId": "mate1_047"
+ },
+ {
+  "FEN": "7k/3rQ3/7K/8/8/8/8/8 w - - 0 1",
+  "Moves": "e7f8",
+  "MateIn": 1,
+  "Theme": "mateIn1",
+  "PuzzleId": "mate1_048"
+ },
+ {
+  "FEN": "8/k1K5/8/8/5R2/8/6P1/8 w - - 0 1",
+  "Moves": "f4a4",
+  "MateIn": 1,
+  "Theme": "mateIn1",
+  "PuzzleId": "mate1_049"
+ },
+ {
+  "FEN": "8/8/2k5/K7/8/1q6/7P/8 b - - 0 1",
+  "Moves": "b3a3",
+  "MateIn": 1,
+  "Theme": "mateIn1",
+  "PuzzleId": "mate1_050"
+ },
+ {
+  "FEN": "8/6P1/5K1k/8/8/8/8/3Q4 w - - 0 1",
+  "Moves": "d1h1",
+  "MateIn": 1,
+  "Theme": "mateIn1",
+  "PuzzleId": "mate1_051"
+ },
+ {
+  "FEN": "8/8/2P5/8/8/5kq1/8/6K1 b - - 0 1",
+  "Moves": "g3g2",
+  "MateIn": 1,
+  "Theme": "mateIn1",
+  "PuzzleId": "mate1_052"
+ },
+ {
+  "FEN": "8/8/8/8/6k1/8/5r2/1K2q3 b - - 0 1",
+  "Moves": "e1d1",
+  "MateIn": 1,
+  "Theme": "mateIn1",
+  "PuzzleId": "mate1_053"
+ },
+ {
+  "FEN": "8/8/2P5/8/8/2k5/8/K1q5 b - - 0 1",
+  "Moves": "c1b2",
+  "MateIn": 1,
+  "Theme": "mateIn1",
+  "PuzzleId": "mate1_054"
+ },
+ {
+  "FEN": "8/8/8/8/r4P2/4k3/7p/4K3 b - - 0 1",
+  "Moves": "h2h1q",
+  "MateIn": 1,
+  "Theme": "mateIn1",
+  "PuzzleId": "mate1_055"
+ },
+ {
+  "FEN": "2Q5/1R3K2/8/8/8/8/k7/8 w - - 0 1",
+  "Moves": "c8a8",
+  "MateIn": 1,
+  "Theme": "mateIn1",
+  "PuzzleId": "mate1_056"
+ },
+ {
+  "FEN": "K7/6r1/6k1/8/8/8/8/7q b - - 0 1",
+  "Moves": "h1b7",
+  "MateIn": 1,
+  "Theme": "mateIn1",
+  "PuzzleId": "mate1_057"
+ },
+ {
+  "FEN": "8/4P1q1/7K/5k2/8/8/8/8 b - - 0 1",
+  "Moves": "g7g6",
+  "MateIn": 1,
+  "Theme": "mateIn1",
+  "PuzzleId": "mate1_058"
+ },
+ {
+  "FEN": "8/7k/8/8/6Q1/3K4/8/R7 w - - 0 1",
+  "Moves": "a1h1",
+  "MateIn": 1,
+  "Theme": "mateIn1",
+  "PuzzleId": "mate1_059"
+ },
+ {
+  "FEN": "8/5k2/8/8/r7/2q5/K7/8 b - - 0 1",
+  "Moves": "c3c2",
+  "MateIn": 1,
+  "Theme": "mateIn1",
+  "PuzzleId": "mate1_060"
+ }
 ]
