@@ -95,3 +95,36 @@ def test_engine_game_clock_runs_for_both_sides():
     # le moteur a répondu quasi instantanément : son horloge a bougé d'à peine
     assert game["clock_ms"]["black"] > 599_000
     assert game["clock_ms"]["white"] <= 600_000
+
+
+def test_web_move_debits_player_clock(client):
+    """Régression : le coup joué via l'interface web doit débiter l'horloge
+    du JOUEUR (sinon son temps de réflexion était facturé au moteur)."""
+    r = client.post("/web/api/games", json={
+        "your_name": "A", "your_color": "white",
+        "against_engine": True, "clock": "10+0",
+    })
+    gid = r.json()["game_id"]
+    game = server.GAMES[gid]
+    black_before = game["clock_ms"]["black"]
+    game["turn_started_at"] -= 5.0  # 5 s de réflexion du joueur
+    r = client.post(f"/web/api/games/{gid}/move",
+                    json={"move": "e2e4", "your_color": "white", "your_name": "A"})
+    assert r.status_code == 200
+    # l'horloge du joueur a été débitée (~5 s), celle du moteur à peine
+    assert game["clock_ms"]["white"] < 600_000 - 4_000
+    assert game["clock_ms"]["black"] > black_before - 500
+
+
+def test_move_clocks_in_history(client):
+    """Le temps consommé par coup est exposé dans l'historique (debrief)."""
+    gid = server.new_game(white="A", black="B", clock="10+0")["game_id"]
+    game = server.GAMES[gid]
+    game["turn_started_at"] -= 2.5
+    server.play_move(gid, "e4", color="white")
+    state = server._web_state(gid, game, None)
+    h0 = state["history"][0]
+    assert h0["san"] == "e4"
+    assert h0["clock"]["color"] == "white"
+    assert 2_000 < h0["clock"]["spent_ms"] < 3_000
+    assert h0["clock"]["remaining_ms"] < 600_000

@@ -126,9 +126,17 @@ function sideName(color) {
   return color === "white" ? state.white_name : state.black_name;
 }
 
+let lastStateKey = "";
+
 function afterState() {
   stateFetchedAt = Date.now();
-  selected = null;
+  // Ne réinitialiser la sélection QUE si la partie a réellement évolué :
+  // le poll (2 s) re-rend l'affichage (l'horloge change à chaque fois),
+  // il ne doit pas effacer la pièce sélectionnée en cours de coup.
+  const key = state.game_id + ":" + state.moves.length + ":"
+    + (state.over ? "1" : "0") + ":" + (state.your_turn ? "1" : "0");
+  if (key !== lastStateKey) selected = null;
+  lastStateKey = key;
   render();
   setResult(state.result || "");
   playersEl.innerHTML = state.white_name === undefined ? "" :
@@ -254,9 +262,16 @@ function renderMoves() {
   const moveHtml = (i) => {
     const m = state.moves[i];
     const inf = moveInfo(i);
+    // temps consommé sur ce coup (horloges) : indicateur de debrief
+    let timev = "";
+    const h = state.history && state.history[i];
+    if (h && h.clock) {
+      const s_ = h.clock.spent_ms / 1000;
+      timev = ' <span class="timev">' + (s_ >= 10 ? Math.round(s_) + "s" : s_.toFixed(1) + "s") + "</span>";
+    }
     return '<span class="mv' + (i === current ? " cur" : "") + " " + inf.cls
       + '" data-ply="' + i + '"' + inf.title + '>'
-      + m + inf.evalv + "</span>";
+      + m + inf.evalv + timev + "</span>";
   };
   let html = "";
   for (let i = 0; i < state.moves.length; i += 2) {

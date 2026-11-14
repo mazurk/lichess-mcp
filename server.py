@@ -201,6 +201,7 @@ def _create_game(white_name: str, black_name: str, level: str,
         if clock_cfg else None,
         "turn_started_at": time.time(),
         "flagged": None,  # camp qui a perdu au temps
+        "move_clocks": [],  # temps consommé par coup (debrief)
     }
     game_id = uuid.uuid4().hex[:8]
     GAMES[game_id] = game
@@ -226,17 +227,25 @@ def _check_flag(game: dict) -> None:
 
 
 def _apply_clock_move(game: dict, color: str) -> None:
-    """Débite l'horloge du camp qui vient de jouer, crédite l'incrément."""
+    """Débite l'horloge du camp qui vient de jouer, crédite l'incrément,
+    et enregistre le temps consommé (indicateur de debrief)."""
     if game["clock_cfg"] is None:
+        game["move_clocks"].append(None)
         return
     elapsed_ms = (time.time() - game["turn_started_at"]) * 1000
     remaining = game["clock_ms"][color] - elapsed_ms
+    spent = min(elapsed_ms, game["clock_ms"][color])
     if remaining <= 0:
         game["clock_ms"][color] = 0
         game["flagged"] = color
     else:
         game["clock_ms"][color] = remaining + game["clock_cfg"]["inc_ms"]
     game["turn_started_at"] = time.time()
+    game["move_clocks"].append({
+        "color": color,
+        "spent_ms": int(max(0, spent)),
+        "remaining_ms": int(max(0, game["clock_ms"][color])),
+    })
 
 
 def _clock_state(game: dict) -> dict | None:
@@ -856,18 +865,26 @@ def _san_history(board: chess.Board) -> list[str]:
     return history
 
 
-def _full_history(board: chess.Board) -> list[dict]:
+def _full_history(game: dict) -> list[dict]:
     """Historique complet pour la navigation web : pour chaque coup, son SAN,
-    son UCI et le FEN de la position qui en résulte."""
-    replay = chess.Board()
+    son UCI, le FEN de la position qui en résulte — et le temps consommé
+    (horloges), indicateur précieux pour le debrief."""
+    board = game["board"]
+    # rejouer depuis la position racine (FEN de départ des échiquiers d'analyse)
+    replay = board.copy()
+    while replay.move_stack:
+        replay.pop()
     history = []
-    for move in board.move_stack:
+    for i, move in enumerate(board.move_stack):
         entry = {
             "san": replay.san(move),
             "uci": move.uci(),
         }
         replay.push(move)
         entry["fen"] = replay.fen()
+        clocks = game["move_clocks"]
+        if i < len(clocks) and clocks[i] is not None:
+            entry["clock"] = clocks[i]
         history.append(entry)
     return history
 
@@ -917,7 +934,7 @@ def _web_state(game_id: str, game: dict, your_color: str | None) -> dict:
         "clock": _clock_state(game),
         "result": result,
         "moves": _san_history(board),
-        "history": _full_history(board),
+        "history": _full_history(game),
         "status": _game_status(game),
         "analysed": game.get("analysis") is not None,
         "spectators": len(game["spectators"]),
@@ -1162,6 +1179,9 @@ async def web_play_move(request: Request) -> JSONResponse:
     your_color = str(body.get("your_color", "white")).lower()
     if your_color not in ("white", "black"):
         return JSONResponse({"error": "your_color doit valoir 'white' ou 'black'"}, status_code=400)
+    _check_flag(game)
+    if game["flagged"] is not None:
+        return JSONResponse({"error": "la partie est terminée : temps écoulé"}, status_code=400)
     if game["resigned"]:
         return JSONResponse({"error": "la partie est terminée (abandon)"}, status_code=400)
     if board.is_game_over():
@@ -1185,6 +1205,7 @@ async def web_play_move(request: Request) -> JSONResponse:
     if parsed is None or parsed not in board.legal_moves:
         return JSONResponse({"error": f"coup illégal ou invalide : {move}"}, status_code=400)
     board.push(parsed)
+    _apply_clock_move(game, your_color)
     if game["engine_color"] and not board.is_game_over():
         await run_in_threadpool(_engine_reply, game)
     return JSONResponse(_web_state(game_id, game, your_color))
