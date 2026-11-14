@@ -684,7 +684,9 @@ def analyze_game(game_id: str, depth: int = 15, publish: bool = True) -> dict:
     moves = list(game["board"].move_stack)
     if not moves:
         raise ValueError("Aucun coup à analyser dans cette partie.")
-    result = analyze_moves(moves, depth)
+    # La position racine est le FEN de départ (échiquiers d'analyse inclus) :
+    # sans elle, les coups seraient illégaux depuis la position initiale.
+    result = analyze_moves(moves, depth, root=game["board"].root())
     result["game_id"] = game_id
     if publish:
         game["analysis"] = {"depth": depth, "evals": result["evals"]}
