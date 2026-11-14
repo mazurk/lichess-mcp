@@ -13,6 +13,7 @@ import io
 import json
 import os
 import random
+import re
 import time
 import uuid
 from pathlib import Path
@@ -72,6 +73,11 @@ def _board_str(board: chess.Board) -> str:
 
 
 def _game_over_info(board: chess.Board, game: dict) -> str:
+    if game["flagged"] is not None:
+        loser = game["flagged"]
+        winner_color = "black" if loser == "white" else "white"
+        winner = game[f"{winner_color}_name"]
+        return f"Temps écoulé ! {winner} ({winner_color}) gagne au drapeau."
     if board.is_checkmate():
         loser_color = "white" if board.turn == chess.WHITE else "black"
         winner_color = "black" if loser_color == "white" else "white"
@@ -140,6 +146,8 @@ def _engine_reply(game: dict) -> str | None:
     board = game["board"]
     if board.is_game_over():
         return None
+    engine_color = game["engine_color"]
+    _apply_clock_move(game, engine_color)
     move = game["engine"].choose_move(board)
     if move is None:
         return None
@@ -148,9 +156,33 @@ def _engine_reply(game: dict) -> str | None:
     return san
 
 
+def _parse_clock(clock: str | None) -> dict | None:
+    """Analyse un réglage d'horloge : None/"infinite" ou "10+0" (minutes+incrément).
+
+    Retourne {"base_ms": ..., "inc_ms": ...} ou None (partie sans horloge).
+    """
+    if clock is None:
+        return None
+    value = str(clock).strip().lower()
+    if value in ("", "infinite", "infini", "inf", "none"):
+        return None
+    match = re.match(r"^(\d+)(?:\+(\d+))?$", value)
+    if not match:
+        raise ValueError(
+            "clock doit valoir 'infinite' ou suivre le format 'minutes+incrément' "
+            "ex. '10+0' (10 minutes, 0 seconde d'incrément)."
+        )
+    minutes = int(match.group(1))
+    inc = int(match.group(2) or 0)
+    if not 1 <= minutes <= 180 or inc > 60:
+        raise ValueError("clock : base entre 1 et 180 minutes, incrément max 60 s.")
+    return {"base_ms": minutes * 60_000, "inc_ms": inc * 1000}
+
+
 def _create_game(white_name: str, black_name: str, level: str,
                  engine_color: str | None, kind: str = "game",
-                 board: chess.Board | None = None) -> dict:
+                 board: chess.Board | None = None,
+                 clock_cfg: dict | None = None) -> dict:
     game = {
         "board": board or chess.Board(),
         "white_name": white_name,
@@ -164,10 +196,64 @@ def _create_game(white_name: str, black_name: str, level: str,
         "white_seat": None,
         "black_seat": None,
         "spectators": {},  # nom -> True (nombre illimité, compteur pour l'UI)
+        "clock_cfg": clock_cfg,
+        "clock_ms": {"white": clock_cfg["base_ms"], "black": clock_cfg["base_ms"]}
+        if clock_cfg else None,
+        "turn_started_at": time.time(),
+        "flagged": None,  # camp qui a perdu au temps
     }
     game_id = uuid.uuid4().hex[:8]
     GAMES[game_id] = game
     return game_id
+
+
+def _is_over(game: dict) -> bool:
+    return (game["resigned"] or game["flagged"] is not None
+            or game["board"].is_game_over())
+
+
+def _check_flag(game: dict) -> None:
+    """Détecte le drapeau du camp au trait si son temps est épuisé."""
+    if game["clock_cfg"] is None or game["flagged"] is not None:
+        return
+    if game["resigned"] or game["board"].is_game_over():
+        return
+    color = "white" if game["board"].turn == chess.WHITE else "black"
+    elapsed_ms = (time.time() - game["turn_started_at"]) * 1000
+    if elapsed_ms > game["clock_ms"][color]:
+        game["clock_ms"][color] = 0
+        game["flagged"] = color
+
+
+def _apply_clock_move(game: dict, color: str) -> None:
+    """Débite l'horloge du camp qui vient de jouer, crédite l'incrément."""
+    if game["clock_cfg"] is None:
+        return
+    elapsed_ms = (time.time() - game["turn_started_at"]) * 1000
+    remaining = game["clock_ms"][color] - elapsed_ms
+    if remaining <= 0:
+        game["clock_ms"][color] = 0
+        game["flagged"] = color
+    else:
+        game["clock_ms"][color] = remaining + game["clock_cfg"]["inc_ms"]
+    game["turn_started_at"] = time.time()
+
+
+def _clock_state(game: dict) -> dict | None:
+    """Temps restants (ms) au moment de l'appel + camp dont l'horloge tourne."""
+    if game["clock_cfg"] is None:
+        return None
+    _check_flag(game)
+    running = None
+    if not _is_over(game):
+        running = "white" if game["board"].turn == chess.WHITE else "black"
+    result = {"running": running}
+    for color in ("white", "black"):
+        remaining = game["clock_ms"][color]
+        if running == color:
+            remaining -= (time.time() - game["turn_started_at"]) * 1000
+        result[f"{color}_ms"] = max(0, int(remaining))
+    return result
 
 
 def _seat_info(game: dict) -> dict:
@@ -176,7 +262,8 @@ def _seat_info(game: dict) -> dict:
 
 @mcp.tool()
 def new_game(white: str = "Blancs", black: str = "Noirs",
-             level: str = "medium", engine_color: str | None = None) -> dict:
+             level: str = "medium", engine_color: str | None = None,
+             clock: str | None = None) -> dict:
     """Démarre une nouvelle partie.
 
     Chaque camp porte un nom de joueur (humain, agent IA, ou "Moteur").
@@ -191,19 +278,25 @@ def new_game(white: str = "Blancs", black: str = "Noirs",
         engine_color: camp joué par le moteur local, "white" ou "black" — il
             répond alors automatiquement à chaque coup adverse. None pour une
             partie libre : les deux camps sont joués de l'extérieur.
+        clock: horloge de la partie, "10+0" (10 minutes + 0 s d'incrément)
+            ou "infinite"/None pour jouer sans limite de temps. Le temps
+            restant est visible via get_board et sur l'interface web ; le
+            camp dont le temps s'épuise perd au drapeau.
     """
     level = _check_level(level)
     if engine_color is not None:
         engine_color = _check_color(engine_color)
     if engine_color == "white":
         white = "Moteur"
+    clock_cfg = _parse_clock(clock)
 
-    game_id = _create_game(white, black, level, engine_color)
+    game_id = _create_game(white, black, level, engine_color, clock_cfg=clock_cfg)
     game = GAMES[game_id]
 
     result = {
         "game_id": game_id,
         "level": level,
+        "clock": _clock_state(game),
         "board": _board_str(game["board"]),
         "fen": game["board"].fen(),
     }
@@ -356,6 +449,7 @@ def get_board(game_id: str, ply: int | None = None) -> dict:
         "move_number": replay.fullmove_number,
         "ply": ply,
         "total_moves": total,
+        "clock": _clock_state(game),
         **_turn_info(game),
         # en relecture, le trait est celui de la position rejouée
         "turn": "white" if replay.turn == chess.WHITE else "black",
@@ -397,6 +491,13 @@ def play_move(game_id: str, move: str, color: str | None = None,
     """
     game = _get_game(game_id)
     board = game["board"]
+    _check_flag(game)
+    if game["flagged"] is not None:
+        loser = game["flagged"]
+        raise ValueError(
+            f"La partie est terminée : {'Blancs' if loser == 'white' else 'Noirs'} "
+            "ont perdu au drapeau (temps écoulé)."
+        )
     if game["resigned"]:
         raise ValueError("La partie est terminée (abandon).")
     if board.is_game_over():
@@ -439,6 +540,7 @@ def play_move(game_id: str, move: str, color: str | None = None,
 
     san = board.san(parsed)
     board.push(parsed)
+    _apply_clock_move(game, color)
     reply = None
     if game["engine_color"] and not board.is_game_over():
         reply = _engine_reply(game)
@@ -478,7 +580,7 @@ def wait_for_turn(game_id: str, color: str | None = None, timeout_seconds: int =
 
     deadline = time.monotonic() + timeout_seconds
     while True:
-        over = game["resigned"] or board.is_game_over()
+        over = _is_over(game)
         if over:
             if game["resigned"]:
                 who = game[f"{game['resigned_by']}_name"]
@@ -772,14 +874,14 @@ def _full_history(board: chess.Board) -> list[dict]:
 
 def _game_status(game: dict) -> str:
     """Statut lisible d'une partie : en cours / terminée / analysée."""
-    if game["resigned"] or game["board"].is_game_over():
+    if _is_over(game):
         return "terminée"
     return "en cours"
 
 
 def _web_state(game_id: str, game: dict, your_color: str | None) -> dict:
     board = game["board"]
-    over = game["resigned"] or board.is_game_over()
+    over = _is_over(game)
     grid = [
         [
             (board.piece_at(chess.square(f, rank)).symbol()
@@ -792,7 +894,7 @@ def _web_state(game_id: str, game: dict, your_color: str | None) -> dict:
     if game["resigned"]:
         who = game[f"{game['resigned_by']}_name"]
         result = f"{who} ({game['resigned_by']}) a abandonné."
-    elif board.is_game_over():
+    elif over:
         result = _game_over_info(board, game)
     your_turn = (
         not over and your_color is not None
@@ -812,6 +914,7 @@ def _web_state(game_id: str, game: dict, your_color: str | None) -> dict:
         "turn": "white" if board.turn == chess.WHITE else "black",
         "in_check": board.is_check(),
         "over": over,
+        "clock": _clock_state(game),
         "result": result,
         "moves": _san_history(board),
         "history": _full_history(board),
@@ -976,6 +1079,10 @@ async def web_new_game(request: Request) -> JSONResponse:
         return JSONResponse({"error": str(exc)}, status_code=400)
     your_name = str(body.get("your_name", "Joueur")).strip() or "Joueur"
     opponent_name = str(body.get("opponent_name", "Adversaire")).strip() or "Adversaire"
+    try:
+        clock_cfg = _parse_clock(body.get("clock"))
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
 
     engine_color = None
     if against_engine:
@@ -987,7 +1094,8 @@ async def web_new_game(request: Request) -> JSONResponse:
     else:
         white_name, black_name = opponent_name, your_name
 
-    game_id = _create_game(white_name, black_name, level, engine_color)
+    game_id = _create_game(white_name, black_name, level, engine_color,
+                           clock_cfg=clock_cfg)
     game = GAMES[game_id]
     if engine_color == "white":
         await run_in_threadpool(_engine_reply, game)

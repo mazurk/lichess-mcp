@@ -66,6 +66,7 @@ async function newGame() {
     your_color: yourColor,
     against_engine: mode === "engine",
     level,
+    clock: document.getElementById("clockMode").value,
   };
   if (mode === "free") {
     payload.opponent_name = document.getElementById("opponentName").value.trim() || "Adversaire";
@@ -126,6 +127,7 @@ function sideName(color) {
 }
 
 function afterState() {
+  stateFetchedAt = Date.now();
   selected = null;
   render();
   setResult(state.result || "");
@@ -291,6 +293,36 @@ document.addEventListener("keydown", (ev) => {
   else if (ev.key === "ArrowRight") { navNext(); ev.preventDefault(); }
 });
 
+let stateFetchedAt = 0;
+
+function clockText(color) {
+  // Temps restant affiché : valeur serveur (au dernier poll) moins le temps
+  // écoulé si c'est le camp au trait — le poll (2 s) resynchronise.
+  if (!state || !state.clock) return "";
+  let ms = color === "white" ? state.clock.white_ms : state.clock.black_ms;
+  if (state.clock.running === color && !state.over) {
+    ms -= Date.now() - stateFetchedAt;
+  }
+  ms = Math.max(0, ms);
+  const totalSec = Math.floor(ms / 1000);
+  const m = Math.floor(totalSec / 60);
+  const sec = totalSec % 60;
+  return m + ":" + (sec < 10 ? "0" : "") + sec;
+}
+
+function updateClocks() {
+  if (!state || !state.clock) return;
+  for (const color of ["white", "black"]) {
+    const el = document.getElementById("clock-" + color);
+    if (!el) continue;
+    el.textContent = clockText(color);
+    el.className = "clock"
+      + (state.clock.running === color && !state.over ? " running" : "")
+      + ((color === "white" ? state.clock.white_ms : state.clock.black_ms) < 30000 ? " low" : "");
+  }
+}
+setInterval(updateClocks, 500);
+
 function renderGameStatus() {
   const el = document.getElementById("gameStatus");
   if (!state) { el.innerHTML = ""; return; }
@@ -401,8 +433,11 @@ function renderBoardLabels() {
     return '<span class="' + (isTurn ? "to-move" : "") + '">'
       + (color === "white" ? "Blancs" : "Noirs") + " — " + who + turnMark + "</span>";
   };
-  top.innerHTML = label(topColor);
-  bottom.innerHTML = label(bottomColor);
+  top.innerHTML = label(topColor)
+    + '<span class="clock" id="clock-' + topColor + '"></span>';
+  bottom.innerHTML = label(bottomColor)
+    + '<span class="clock" id="clock-' + bottomColor + '"></span>';
+  updateClocks();
 }
 
 function onSquare(sq) {
