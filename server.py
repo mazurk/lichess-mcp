@@ -614,6 +614,10 @@ def wait_for_turn(game_id: str, color: str | None = None, timeout_seconds: int =
 
     deadline = time.monotonic() + timeout_seconds
     while True:
+        # détecte la chute du drapeau du camp au trait AVANT de tester la fin :
+        # sans cela, un drapeau tombé resterait invisible et l'agent attendrait
+        # en boucle des timeouts sans jamais voir la partie terminée.
+        _check_flag(game)
         over = _is_over(game)
         if over:
             if game["resigned"]:

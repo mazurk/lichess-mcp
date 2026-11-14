@@ -160,3 +160,20 @@ def test_analyze_game_pgn_has_clk():
     result = server.analyze_game(gid, depth=5, publish=False)
     assert "[%clk 0:09:5" in result["pgn"]
     assert "[%eval" in result["pgn"]
+
+
+def test_wait_for_turn_returns_game_over_on_flag():
+    """Régression : un drapeau tombé doit être vu par wait_for_turn.
+
+    Sans détection dans la boucle, l'agent adverse attendait en boucle des
+    timeouts sans jamais voir la fin de partie.
+    """
+    gid = server.new_game(white="A", black="B", clock="10+0")["game_id"]
+    game = server.GAMES[gid]
+    server.play_move(gid, "e4", color="white")
+    # noirs au trait avec 1 s restante, réflexion déjà écoulée : drapeau
+    game["clock_ms"]["black"] = 1_000
+    game["turn_started_at"] -= 5.0
+    result = server.wait_for_turn(gid, color="white")
+    assert result["ready"] is False
+    assert result["game_over"] == "Temps écoulé ! A (white) gagne au drapeau."
