@@ -278,3 +278,28 @@ def test_web_games_list_endpoint(client):
     assert g1["status"] == "en cours"
     assert g1["analysed"] is False
     assert g1["plies"] == 0
+    assert g1["puzzle"] is None
+
+
+def test_web_puzzle_fields_in_list_and_state(client):
+    """Un puzzle publié (kind="puzzle") est listé et consultable sur le web,
+    avec sa progression (sans la solution)."""
+    puzzle = server.PUZZLES[0]
+    gid = server.start_puzzle(puzzle_id=puzzle["PuzzleId"], name="Puzzle du jour")["game_id"]
+    games = client.get("/web/api/games").json()["games"]
+    g = next(g for g in games if g["game_id"] == gid)
+    assert g["kind"] == "puzzle"
+    assert g["name"] == "Puzzle du jour"
+    assert g["puzzle"]["puzzle_id"] == puzzle["PuzzleId"]
+    assert g["puzzle"]["solved"] is False
+    state = client.get(f"/web/api/games/{gid}").json()
+    assert state["kind"] == "puzzle"
+    assert state["name"] == "Puzzle du jour"
+    assert state["puzzle"]["plies_done"] == 0
+    assert state["puzzle"]["total_plies"] == len(puzzle["Moves"].split())
+    # après un coup gagnant, la progression et les coups sont visibles côté web
+    line = puzzle["Moves"].split()
+    server.try_puzzle_move(puzzle["PuzzleId"], line[0], game_id=gid)
+    state = client.get(f"/web/api/games/{gid}").json()
+    assert state["puzzle"]["plies_done"] >= 1
+    assert len(state["moves"]) >= 1

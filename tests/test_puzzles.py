@@ -189,3 +189,37 @@ def test_try_puzzle_move_on_published_board():
         raise AssertionError("doit échouer")
     except ValueError:
         pass
+
+
+def test_list_puzzles_catalog():
+    """list_puzzles expose le catalogue (ids pour start_puzzle), avec filtre mate_in."""
+    r = server.list_puzzles()
+    assert r["count"] == len(server.PUZZLES)
+    assert {p["puzzle_id"] for p in r["puzzles"]} == {p["PuzzleId"] for p in server.PUZZLES}
+    r2 = server.list_puzzles(mate_in=2)
+    assert r2["count"] >= 200
+    assert all(p["mate_in"] == 2 for p in r2["puzzles"])
+    r1 = server.list_puzzles(mate_in=1)
+    assert all(p["mate_in"] == 1 for p in r1["puzzles"])
+    with pytest.raises(ValueError):
+        server.list_puzzles(mate_in=3)
+
+
+def test_start_puzzle_progress_exposed():
+    """La progression du puzzle publié est exposée (sans la solution)."""
+    puzzle = server.PUZZLES[0]
+    r = server.start_puzzle(puzzle_id=puzzle["PuzzleId"])
+    gid = r["game_id"]
+    info = server._puzzle_progress(server.GAMES[gid])
+    assert info["puzzle_id"] == puzzle["PuzzleId"]
+    assert info["plies_done"] == 0
+    assert info["total_plies"] == len(puzzle["Moves"].split())
+    assert info["solved"] is False
+    assert "moves" not in info
+    # après le coup gagnant, la progression avance et le puzzle est résolu
+    line = puzzle["Moves"].split()
+    server.try_puzzle_move(puzzle["PuzzleId"], line[0], game_id=gid)
+    info = server._puzzle_progress(server.GAMES[gid])
+    assert info["plies_done"] >= 1
+    if len(line) == 1:
+        assert info["solved"] is True

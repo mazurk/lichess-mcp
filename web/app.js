@@ -4,19 +4,21 @@ let state = null, selected = null, pollTimer = null, spectator = false;
 // Navigation dans l'historique : null = position en direct (dernier coup),
 // sinon index du coup affiché (0 = position après le 1er coup).
 let viewPly = null;
-// Mode du cadre « Choix de la partie » : create / join / analysis / dryrun
+// Mode du cadre « Choix de la partie » : create / join / analysis / dryrun / puzzle
 let mode = "create";
 
 const MODE_HINTS = {
   create: "Démarrez une nouvelle partie : contre le moteur, un agent IA ou un humain.",
   join: "Rejoignez une partie en cours ou terminée (non analysée) : joueur ou spectateur.",
   analysis: "Ouvrez une partie terminée et analysée pour le debrief (consultation).",
-  dryrun: "Consultez un échiquier d'analyse (dry-run) ou un puzzle publié par l'agent (spectateur).",
+  dryrun: "Consultez un échiquier d'analyse (dry-run) créé par l'agent (spectateur).",
+  puzzle: "Consultez les puzzles publiés par l'agent (mode puzzle) : position, coups joués et progression (spectateur).",
 };
 const MODE_LABELS = {
   join: "Rejoindre",
   analysis: "Analyser",
   dryrun: "Consulter",
+  puzzle: "Consulter",
 };
 
 const statusEl = document.getElementById("status");
@@ -91,7 +93,7 @@ async function joinGame() {
       spectator = true;
       state = await api("/web/api/games/" + encodeURIComponent(game_id) + "?your_color=" + viewColor,
         {method: "GET"});
-    } else if (mode === "dryrun") {
+    } else if (mode === "dryrun" || mode === "puzzle") {
       // Consultation d'un échiquier d'analyse : spectateur uniquement.
       spectator = true;
       state = await api("/web/api/games/" + encodeURIComponent(game_id), {method: "GET"});
@@ -370,6 +372,11 @@ function renderGameStatus() {
   if (state.analysed && state.analysis) {
     html += ' <span class="badge analysed">analysée (prof. ' + state.analysis.depth + ")</span>";
   }
+  if (state.puzzle) {
+    html += ' <span class="badge puzzle">puzzle ' + escapeHtml(state.puzzle.puzzle_id)
+      + " · " + state.puzzle.plies_done + "/" + state.puzzle.total_plies
+      + (state.puzzle.solved ? " · résolu ✓" : "") + "</span>";
+  }
   if (state.spectators > 0) {
     html += ' <span class="badge spectators">👁 ' + state.spectators
       + (state.spectators > 1 ? " spectateurs" : " spectateur") + "</span>";
@@ -559,8 +566,11 @@ function filterGamesForMode(games) {
     return games.filter(g => g.kind === "game" && g.analysed && g.status === "terminée");
   }
   if (mode === "dryrun") {
-    // échiquiers d'analyse + puzzles publiés (consultation/spectateur)
-    return games.filter(g => g.kind === "analysis" || g.kind === "puzzle");
+    return games.filter(g => g.kind === "analysis");
+  }
+  if (mode === "puzzle") {
+    // puzzles publiés par l'agent (consultation/spectateur)
+    return games.filter(g => g.kind === "puzzle");
   }
   return games;
 }
@@ -575,8 +585,9 @@ async function refreshGameList() {
   if (!games.length) {
     const opt = document.createElement("option");
     opt.value = "";
-    opt.textContent = mode === "dryrun" ? "Aucun échiquier d'analyse ni puzzle sur le serveur"
+    opt.textContent = mode === "dryrun" ? "Aucun échiquier d'analyse sur le serveur"
       : mode === "analysis" ? "Aucune partie analysée à consulter"
+      : mode === "puzzle" ? "Aucun puzzle publié sur le serveur"
       : "Aucune partie sur le serveur";
     select.appendChild(opt);
     return;
@@ -587,9 +598,14 @@ async function refreshGameList() {
     const ongoingAnalysed = g.analysed && g.status === "en cours";
     const who = (g.kind === "analysis" || g.kind === "puzzle") && g.name
       ? g.name : g.white_name + " vs " + g.black_name;
-    const label = g.game_id + " — " + who
+    let label = g.game_id + " — " + who
       + " · " + g.plies + " coups · " + g.status
       + (g.analysed ? (ongoingAnalysed ? " · ANALYSÉE en cours !" : " · analysée") : "");
+    if (g.puzzle) {
+      label += " · puzzle " + g.puzzle.puzzle_id
+        + " " + g.puzzle.plies_done + "/" + g.puzzle.total_plies
+        + (g.puzzle.solved ? " ✓" : "");
+    }
     opt.textContent = label;
     if (ongoingAnalysed) opt.style.color = "#d34f5a";
     select.appendChild(opt);

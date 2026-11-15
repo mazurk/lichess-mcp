@@ -731,6 +731,23 @@ def _start_puzzle(puzzle: dict) -> dict:
     return session
 
 
+def _puzzle_progress(game: dict) -> dict | None:
+    """Progression d'un puzzle publié (kind="puzzle") — sans la solution."""
+    session = game.get("puzzle")
+    if not session or "puzzle" not in session:
+        return None
+    puzzle = session["puzzle"]
+    line = puzzle["Moves"].split()
+    return {
+        "puzzle_id": puzzle["PuzzleId"],
+        "theme": puzzle.get("Theme", ""),
+        "mate_in": puzzle.get("MateIn", 1),
+        "plies_done": session.get("plies_done", 0),
+        "total_plies": len(line),
+        "solved": bool(session.get("solved", False)),
+    }
+
+
 @mcp.tool()
 def next_puzzle() -> dict:
     """Tire un puzzle : trouvez le mat (en 1 ou 2 coups).
@@ -758,18 +775,44 @@ def next_puzzle() -> dict:
 
 
 @mcp.tool()
+def list_puzzles(mate_in: int | None = None) -> dict:
+    """Liste le catalogue des puzzles disponibles (base locale puzzles.json).
+
+    Donne les identifiants à passer à start_puzzle(puzzle_id=...).
+
+    Args:
+        mate_in: filtre optionnel — 1 (mat en 1) ou 2 (mat en 2). None = tous.
+    """
+    if mate_in is not None:
+        mate_in = int(mate_in)
+        if mate_in not in (1, 2):
+            raise ValueError("mate_in doit valoir 1 ou 2 (ou None).")
+    puzzles = [
+        {
+            "puzzle_id": p["PuzzleId"],
+            "theme": p.get("Theme", ""),
+            "mate_in": p.get("MateIn", 1),
+        }
+        for p in PUZZLES
+        if mate_in is None or p.get("MateIn", 1) == mate_in
+    ]
+    return {"count": len(puzzles), "puzzles": puzzles}
+
+
+@mcp.tool()
 def start_puzzle(puzzle_id: str | None = None,
                  name: str | None = None) -> dict:
     """Tire un puzzle et le publie sur un échiquier observable (mode Puzzle).
 
     Contrairement à next_puzzle (invisible), le puzzle est matérialisé sur le
-    serveur : l'interface web peut l'afficher (mode Consulter) pour observer
+    serveur : l'interface web peut l'afficher (mode Puzzles) pour observer
     l'agent en train de le résoudre. Jouez ensuite les coups avec
     try_puzzle_move(..., game_id=...) : chaque coup validé apparaît sur
-    l'échiquier web.
+    l'échiquier web, avec la progression du puzzle.
 
     Args:
-        puzzle_id: identifiant d'un puzzle précis (défaut : tirage aléatoire).
+        puzzle_id: identifiant d'un puzzle précis (voir list_puzzles ;
+            défaut : tirage aléatoire).
         name: nom lisible de l'échiquier (ex. "Puzzle du jour"), affiché dans
             la liste des parties.
     """
@@ -802,7 +845,7 @@ def start_puzzle(puzzle_id: str | None = None,
         "side_to_play": "white" if game["board"].turn == chess.WHITE else "black",
         "hint": hint,
         "note": "Puzzle publié : l'interface web peut l'observer (mode "
-                 "Consulter). Jouez avec try_puzzle_move(..., game_id=...).",
+                 "Puzzles). Jouez avec try_puzzle_move(..., game_id=...).",
     }
 
 
@@ -1036,6 +1079,8 @@ def _web_state(game_id: str, game: dict, your_color: str | None) -> dict:
         "black_name": game["black_name"],
         "engine_color": game["engine_color"],
         "kind": game["kind"],
+        "name": game["name"],
+        "puzzle": _puzzle_progress(game),
         **_seat_info(game),
         "your_color": your_color,
         "your_turn": your_turn,
@@ -1188,6 +1233,7 @@ async def web_list_games(request: Request) -> JSONResponse:
             "status": _game_status(game),
             "analysed": analysis is not None,
             "analysis_depth": analysis["depth"] if analysis else None,
+            "puzzle": _puzzle_progress(game),
         })
     games.sort(key=lambda g: g["game_id"])
     return JSONResponse({"games": games})
