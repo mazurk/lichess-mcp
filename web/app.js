@@ -143,6 +143,14 @@ function afterState() {
   setResult(state.result || "");
   playersEl.innerHTML = state.white_name === undefined ? "" :
     "Blancs : <b>" + escapeHtml(state.white_name) + "</b><br>Noirs : <b>" + escapeHtml(state.black_name) + "</b>";
+  // Bouton d'abandon : visible uniquement pour un joueur (pas un spectateur),
+  // tant que la partie est en cours.
+  const btnResign = document.getElementById("btnResign");
+  if (btnResign) {
+    btnResign.style.display =
+      (!state.over && !spectator && state.your_color !== null && state.your_color !== undefined)
+        ? "block" : "none";
+  }
   if (state.over) {
     setStatus("Partie terminée.", "ok");
     stopPolling();
@@ -533,8 +541,31 @@ async function playMove(uci) {
   }
 }
 
+async function resignGame() {
+  // Abandon du camp du joueur connecté (jamais pour un spectateur : le bouton
+  // est masqué, et le serveur rejette de toute façon un your_color invalide).
+  if (!state || spectator || !state.your_color || state.over) return;
+  if (!confirm("Abandonner la partie ? Votre adversaire gagne.")) return;
+  stopPolling();
+  try {
+    state = await api("/web/api/games/" + encodeURIComponent(state.game_id) + "/resign", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        your_color: state.your_color,
+        your_name: document.getElementById("yourName").value.trim() || "Joueur",
+      }),
+    });
+    afterState();
+  } catch (e) {
+    setStatus(e.message, "err");
+    startPolling();
+  }
+}
+
 document.getElementById("btnNew").onclick = () => newGame().then(refreshGameList).catch(e => setStatus(e.message, "err"));
 document.getElementById("btnJoin").onclick = joinGame;
+document.getElementById("btnResign").onclick = resignGame;
 document.getElementById("btnFirst").onclick = navFirst;
 document.getElementById("btnPrev").onclick = navPrev;
 document.getElementById("btnNext").onclick = navNext;
