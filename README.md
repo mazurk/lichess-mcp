@@ -49,6 +49,7 @@ format Lichess (FEN + coups UCI).
 | `undo(game_id)` | Annule le dernier coup (+ réponse du moteur s'il vient de jouer) |
 | `resign(game_id, color)` | Abandon pour le camp indiqué (défaut : camp au trait) |
 | `game_status(game_id)` | Statut : joueurs, trait, fin éventuelle |
+| `list_games(kind)` | Liste les parties du serveur sans besoin de l'identifiant (`kind` = `game`, `analysis`, `puzzle` ou None) : id, joueurs, trait, FEN, statut |
 | `next_puzzle()` | Tire un puzzle (mat en 1 ou en 2) |
 | `try_puzzle_move(puzzle_id, move)` | Propose une solution de puzzle — pour un mat en 2 : coup clé validé, réponse adverse jouée automatiquement, puis coup de mat |
 | `analyze_game(game_id, depth)` | Analyse Stockfish d'une partie ou d'un échiquier d'analyse → PGN annoté + coups critiques |
