@@ -27,13 +27,14 @@ def test_puzzle_database_size():
 
 
 def test_puzzle_database_integrity():
-    """Chaque puzzle : FEN valide, ligne légale, mat final authentique,
-    longueur de ligne = 2N-1 demi-coups."""
+    """Chaque puzzle : position strictement légale (pas de roi adverse en prise),
+    FEN lisible, ligne légale, mat final authentique, longueur = 2N-1 demi-coups."""
     ids = set()
     for p in server.PUZZLES:
         assert p["PuzzleId"] not in ids, f"id dupliqué : {p['PuzzleId']}"
         ids.add(p["PuzzleId"])
         board = chess.Board(p["FEN"])
+        assert board.is_valid(), f"position illégale dans {p['PuzzleId']} ({board.status()})"
         line = p["Moves"].split()
         assert len(line) == 2 * p.get("MateIn", 1) - 1
         for uci in line:
@@ -41,6 +42,12 @@ def test_puzzle_database_integrity():
             assert move in board.legal_moves, f"coup illégal dans {p['PuzzleId']}"
             board.push(move)
         assert board.is_checkmate(), f"pas de mat final dans {p['PuzzleId']}"
+
+
+def test_puzzles_from_lichess_are_marked():
+    """Les puzzles récupérés sur lichess.org portent leur source."""
+    src = [p for p in server.PUZZLES if str(p.get("Source", "")).startswith("lichess.org")]
+    assert len(src) >= 100, f"seulement {len(src)} puzzles sourcés lichess.org"
 
 
 def test_next_puzzle_session_and_hints():

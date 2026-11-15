@@ -44,22 +44,22 @@ format Lichess (FEN + coups UCI).
 
 | Outil | Rôle |
 |---|---|
-| `new_game(white, black, level, engine_color)` | Démarre une partie : noms des deux joueurs ; `engine_color` = camp du moteur (`None` = partie libre). N'attribue aucune place |
+| `new_game(white, black, level, engine_color, clock)` | Démarre une partie : noms des deux joueurs ; `engine_color` = camp du moteur (`None` = partie libre). N'attribue aucune place. `clock="10+0"` : horloge — elle ne démarre que lorsque les **deux camps sont couverts** (joueur ayant rejoint ou moteur) ; le 1er coup des blancs est refusé tant que le camp noir n'est pas couvert |
 | `join_game(game_id, player, color, spectate)` | Occupe un camp (premier arrivé, premier servi) ; le camp devient verrouillé au nom du joueur, l'autre joueur obtient l'autre camp. `spectate=True` : rejoint en spectateur (aucune place prise, nombre illimité, compteur visible sur l'interface) |
 | `new_analysis_board(fen)` | Échiquier d'analyse (dry-run) : testez des coups des deux couleurs depuis un FEN |
 | `get_board(game_id)` | Échiquier ASCII, FEN, trait, noms des joueurs |
 | `legal_moves(game_id)` | Coups légaux au format SAN |
-| `play_move(game_id, move, color)` | Joue un coup (SAN ou UCI) pour le camp `color` (défaut : camp au trait) ; refusé pour le camp du moteur |
+| `play_move(game_id, move, color, player)` | Joue un coup (SAN ou UCI) pour le camp `color` (défaut : camp au trait) ; refusé pour le camp du moteur. Un **SAN ambigu** (ex. « Nxd5 » jouable par deux cavaliers) est refusé avec la liste des coups valides — jamais de résolution silencieuse |
 | `wait_for_turn(game_id, color, timeout_seconds)` | Long-poll : attend que ce soit le tour du camp `color` — jouer en temps réel sans notification |
 | `undo(game_id)` | Annule le dernier coup (+ réponse du moteur s'il vient de jouer) |
-| `resign(game_id, color)` | Abandon pour le camp indiqué (défaut : camp au trait) |
+| `resign(game_id, color, player)` | Abandon pour le camp indiqué (défaut : camp au trait) ou pour le **joueur nommé** (`player`, résolu via les places prises) ; le nom du vainqueur est toujours renvoyé |
 | `game_status(game_id)` | Statut : joueurs, trait, fin éventuelle |
 | `list_games(kind)` | Liste les parties du serveur sans besoin de l'identifiant (`kind` = `game`, `analysis`, `puzzle` ou None) : id, joueurs, trait, FEN, statut |
 | `next_puzzle()` | Tire un puzzle (mat en 1 ou en 2) |
 | `try_puzzle_move(puzzle_id, move, game_id)` | Propose une solution de puzzle — pour un mat en 2 : coup clé validé, réponse adverse jouée automatiquement, puis coup de mat. Avec `game_id` (puzzle publié), le coup validé est joué sur l'échiquier web |
 | `list_puzzles(mate_in)` | Catalogue des puzzles disponibles (filtre 1 ou 2) — ids à passer à `start_puzzle` |
 | `start_puzzle(puzzle_id, name)` | Publie un puzzle en mode **puzzle** (échiquier observable sur le web) pour entraîner l'agent |
-| `analyze_game(game_id, depth)` | Analyse Stockfish d'une partie ou d'un échiquier d'analyse → PGN annoté + coups critiques |
+| `analyze_game(game_id, depth)` | Analyse Stockfish d'une partie ou d'un échiquier d'analyse → PGN annoté (en-têtes complets : White/Black/Result/Date) + coups critiques |
 | `analyze_pgn(pgn, depth)` | Analyse Stockfish d'un PGN externe (ex. exporté de lichess.org) |
 
 ## Installation
@@ -108,7 +108,9 @@ en **mode spectateur** (case à cocher) —, de consulter les parties analysées
 puzzles publiés (mode **Puzzles**), de jouer à la souris (coups légaux
 surlignés, promotion gérée), de suivre les coups en temps réel
 (rafraîchissement automatique) et de naviguer dans l'historique coup par coup
-— y compris jusqu'à la **position initiale** (avant le 1er coup). Les parties
+— y compris jusqu'à la **position initiale** (avant le 1er coup). Un bouton
+**Abandonner la partie** est proposé aux joueurs (jamais aux spectateurs), et
+toute fin de partie (abandon, mat, drapeau) **nomme le vainqueur**. Les parties
 sont **partagées avec les outils MCP** : agents et humains jouent dans les
 mêmes parties, chacun son camp.
 
@@ -130,9 +132,12 @@ demande le token une fois et le mémorise localement.
 
 ## Ajouter des puzzles
 
-`puzzles.json` contient **283 puzzles** : 63 mats en 1 et **220 mats en 2**,
-générés et validés par Stockfish (ligne légale, mat final authentique,
-« mat en N exactement »). Format :
+`puzzles.json` contient **539 puzzles** : 222 mats en 1 et 317 mats en 2,
+validés (position strictement légale, ligne légale, mat final authentique,
+« mat en N exactement »). La base intègre des puzzles issus de la
+[Lichess Puzzle Database](https://database.lichess.org/#puzzles) (domaine
+public) ; les positions illégales de l'ancienne base ont été retirées.
+Format :
 
 ```json
 {
@@ -144,6 +149,8 @@ générés et validés par Stockfish (ligne légale, mat final authentique,
 }
 ```
 
-Pour enrichir la base, vous pouvez importer des puzzles au format
+Pour enrichir la base, importez des puzzles au format
 [Lichess Puzzle Database](https://database.lichess.org/#puzzles) (champ
-`Themes` = `mateIn1`/`mateIn2`) en conservant ce format.
+`Themes` = `mateIn1`/`mateIn2`) en conservant ce format — seules les
+positions strictement légales sont acceptées (vérifiées par
+`tests/test_puzzles.py`).

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import time
 
 import chess
 import chess.engine
@@ -90,9 +91,39 @@ def _clk_str(ms: int) -> str:
     return f"{h}:{m:02d}:{s:02d}"
 
 
+def _set_pgn_headers(game: chess.pgn.Game, *, white_name: str | None,
+                     black_name: str | None, result: str | None, date: str | None,
+                     headers: dict | None) -> None:
+    """Renseigne les en-têtes du PGN exporté (White/Black/Result/Date...).
+
+    `headers` (en-têtes d'un PGN source) est prioritaire ; les valeurs par
+    défaut python-chess ("?", "????.??.??") sont remplacées.
+    """
+    if headers:
+        for key, value in headers.items():
+            game.headers[key] = str(value)
+    if white_name is not None:
+        game.headers["White"] = str(white_name)
+    if black_name is not None:
+        game.headers["Black"] = str(black_name)
+    if result is not None:
+        game.headers["Result"] = str(result)
+    if date is not None:
+        game.headers["Date"] = str(date)
+    if "?" in str(game.headers.get("Event") or ""):
+        game.headers["Event"] = "Analyse lichess-mcp"
+    if "?" in str(game.headers.get("Site") or ""):
+        game.headers["Site"] = "lichess-mcp (local)"
+    if "?" in str(game.headers.get("Date") or ""):
+        game.headers["Date"] = time.strftime("%Y.%m.%d", time.gmtime())
+
+
 def analyze_moves(moves: list[chess.Move], depth: int = 15,
                   root: chess.Board | None = None,
-                  move_clocks: list[dict | None] | None = None) -> dict:
+                  move_clocks: list[dict | None] | None = None, *,
+                  white_name: str | None = None, black_name: str | None = None,
+                  result: str | None = None, date: str | None = None,
+                  headers: dict | None = None) -> dict:
     """Analyse une séquence de coups depuis une position de départ.
 
     Par défaut la position initiale ; `root` permet d'analyser depuis un FEN
@@ -102,6 +133,11 @@ def analyze_moves(moves: list[chess.Move], depth: int = 15,
     `move_clocks` (optionnel) : relevés d'horloge par coup (champ `clock` de
     l'historique) ; s'ils sont fournis, chaque coup du PGN est annoté
     `[%clk H:MM:SS]` avec le temps restant du camp qui vient de jouer.
+
+    En-têtes du PGN exporté : `headers` (dict) est prioritaire ; sinon White /
+    Black / Result / Date sont renseignés depuis `white_name`, `black_name`,
+    `result` (1-0, 0-1, 1/2-1/2, *) et `date` (défaut : aujourd'hui, format
+    PGN YYYY.MM.DD) — l'export est ainsi directement exploitable.
 
     Retourne le PGN annoté, un résumé par camp et la liste des coups critiques.
     """
@@ -115,8 +151,9 @@ def analyze_moves(moves: list[chess.Move], depth: int = 15,
     root = root.copy(stack=False) if root is not None else chess.Board()
 
     game = chess.pgn.Game()
-    game.headers["Event"] = "Analyse lichess-mcp"
     game.setup(root)
+    _set_pgn_headers(game, white_name=white_name, black_name=black_name,
+                     result=result, date=date, headers=headers)
     node = game
     board = root.copy(stack=False)
     critical: list[dict] = []

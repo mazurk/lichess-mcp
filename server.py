@@ -94,13 +94,125 @@ def _game_over_info(board: chess.Board, game: dict) -> str:
     return ""
 
 
-def _parse_move(board: chess.Board, move: str) -> chess.Move | None:
-    for candidate in (board.parse_san, board.parse_uci):
-        try:
-            return candidate(move)
-        except (ValueError, chess.InvalidMoveError, chess.IllegalMoveError):
+def _result_text(game: dict) -> str:
+    """Texte de fin de partie — rappelle toujours le nom du vainqueur s'il y en a un."""
+    if game["resigned"]:
+        loser = game["resigned_by"]
+        winner_color = "black" if loser == "white" else "white"
+        return (
+            f"{game[f'{loser}_name']} ({loser}) abandonne. "
+            f"{game[f'{winner_color}_name']} ({winner_color}) gagne."
+        )
+    return _game_over_info(game["board"], game)
+
+
+def _winner(game: dict) -> dict | None:
+    """Vainqueur structuré {"name", "color"}, ou None (nulle / partie en cours)."""
+    board = game["board"]
+    if game["resigned"] or game["flagged"] is not None:
+        loser = game["resigned_by"] if game["resigned"] else game["flagged"]
+        winner_color = "black" if loser == "white" else "white"
+    elif board.is_checkmate():
+        loser_color = "white" if board.turn == chess.WHITE else "black"
+        winner_color = "black" if loser_color == "white" else "white"
+    else:
+        return None
+    return {"name": game[f"{winner_color}_name"], "color": winner_color}
+
+
+def _pgn_result(game: dict) -> str:
+    """Résultat au format PGN (1-0, 0-1, 1/2-1/2, *) pour les en-têtes d'analyse."""
+    board = game["board"]
+    if game["resigned"] or game["flagged"] is not None:
+        loser = game["resigned_by"] if game["resigned"] else game["flagged"]
+        return "0-1" if loser == "white" else "1-0"
+    if board.is_checkmate():
+        return "0-1" if board.turn == chess.WHITE else "1-0"
+    if (board.is_stalemate() or board.is_insufficient_material()
+            or board.is_fifty_moves() or board.is_repetition(3)):
+        return "1/2-1/2"
+    return "*"
+
+
+_SAN_RE = re.compile(
+    r"^(?P<piece>[KQRBN])?"
+    r"(?P<from_file>[a-h])?(?P<from_rank>[1-8])?"
+    r"(?P<capture>x)?"
+    r"(?P<to>[a-h][1-8])"
+    r"(?:=?(?P<promo>[QRBN]))?"
+    r"(?P<suffix>[+#])?$"
+)
+_UCI_RE = re.compile(r"^[a-h][1-8][a-h][1-8][qrbn]?$")
+_SAN_PIECES = {"K": chess.KING, "Q": chess.QUEEN, "R": chess.ROOK,
+               "B": chess.BISHOP, "N": chess.KNIGHT}
+_SAN_PROMOS = {"Q": chess.QUEEN, "R": chess.ROOK, "B": chess.BISHOP, "N": chess.KNIGHT}
+
+
+def _match_san(board: chess.Board, text: str) -> list[chess.Move]:
+    """Coups légaux correspondant exactement à un SAN (désambiguïté comprise)."""
+    m = _SAN_RE.match(text)
+    if not m:
+        return []
+    g = m.groupdict()
+    to = chess.parse_square(g["to"])
+    promo = _SAN_PROMOS.get(g["promo"])
+    piece_type = _SAN_PIECES.get(g["piece"])
+    from_file = ord(g["from_file"]) - 97 if g["from_file"] else None
+    from_rank = int(g["from_rank"]) - 1 if g["from_rank"] else None
+    capture = bool(g["capture"])
+    matches = []
+    for mv in board.legal_moves:
+        if mv.to_square != to:
             continue
-    return None
+        if (mv.promotion or None) != promo:
+            continue
+        piece = board.piece_at(mv.from_square)
+        if piece is None or piece.color != board.turn:
+            continue
+        if piece_type is not None:
+            if piece.piece_type != piece_type:
+                continue
+        elif piece.piece_type != chess.PAWN:
+            continue
+        if from_file is not None and chess.square_file(mv.from_square) != from_file:
+            continue
+        if from_rank is not None and chess.square_rank(mv.from_square) != from_rank:
+            continue
+        if board.is_capture(mv) != capture:
+            continue
+        matches.append(mv)
+    return matches
+
+
+def _parse_move(board: chess.Board, move: str) -> chess.Move | None:
+    """Convertit un coup (SAN ou UCI) en chess.Move.
+
+    Lève ValueError si le SAN est ambigu (plusieurs coups légaux correspondent
+    exactement) : jamais de résolution silencieuse. Retourne None si le coup
+    est invalide ou illégal.
+    """
+    text = str(move).strip()
+    if _UCI_RE.match(text):
+        try:
+            parsed = board.parse_uci(text)
+        except ValueError:
+            return None
+        return parsed if parsed in board.legal_moves else None
+    matches = _match_san(board, text)
+    if len(matches) > 1:
+        sans = sorted(board.san(mv) for mv in matches)
+        raise ValueError(
+            f"« {text} » est ambigu : {len(matches)} coups correspondent "
+            f"({', '.join(sans)}). Précisez la case de départ, ex. « {sans[0]} »."
+        )
+    if len(matches) == 1:
+        return matches[0]
+    # repli : SAN gérés par python-chess (roque « O-O », variantes d'écriture)
+    try:
+        return board.parse_san(text)
+    except (ValueError, chess.InvalidMoveError, chess.IllegalMoveError,
+            chess.AmbiguousMoveError):
+        return None
 
 
 def _get_game(game_id: str) -> dict:
@@ -156,6 +268,55 @@ def _engine_reply(game: dict) -> str | None:
     return san
 
 
+def _side_covered(game: dict, color: str) -> bool:
+    """Un camp est « couvert » s'il est occupé par un joueur ou joué par le moteur."""
+    return game[f"{color}_seat"] is not None or game["engine_color"] == color
+
+
+def _both_sides_covered(game: dict) -> bool:
+    return _side_covered(game, "white") and _side_covered(game, "black")
+
+
+def _maybe_start_clock(game: dict) -> None:
+    """Démarre l'horloge dès que les deux camps sont couverts (joueur ou moteur).
+
+    Avant cela, aucun temps ne s'écoule : l'horloge ne tourne pas à vide
+    en attendant que l'adversaire rejoigne la partie.
+    """
+    if game["clock_cfg"] is None or game["clock_started"]:
+        return
+    if _both_sides_covered(game):
+        game["clock_started"] = True
+        game["turn_started_at"] = time.time()
+
+
+def _ensure_clock_started(game: dict) -> None:
+    """Démarre l'horloge si ce n'est pas fait : au plus tard au premier coup
+    (le blocage du 1er coup des blancs garantit que l'autre camp est alors
+    couvert, donc ce démarrage n'arrive jamais « à vide »)."""
+    _maybe_start_clock(game)
+    if (game["clock_cfg"] is not None and not game["clock_started"]
+            and not game["board"].move_stack):
+        game["clock_started"] = True
+        game["turn_started_at"] = time.time()
+
+
+def _check_first_move_allowed(game: dict, color: str) -> None:
+    """Partie chronométrée : le premier coup des blancs exige que le camp noir
+    soit déjà couvert (joueur rejoint ou moteur) — sinon l'horloge du joueur
+    blanc tournerait seule en attendant l'adversaire."""
+    if game["clock_cfg"] is None or game["kind"] != "game":
+        return
+    if game["board"].move_stack or color != "white":
+        return
+    if not _side_covered(game, "black"):
+        raise ValueError(
+            "Le camp black n'a pas encore été rejoint (join_game ou player=...) : "
+            "avec une horloge, le premier coup des blancs n'est autorisé que "
+            "lorsque les deux camps sont occupés."
+        )
+
+
 def _parse_clock(clock: str | None) -> dict | None:
     """Analyse un réglage d'horloge : None/"infinite" ou "10+0" (minutes+incrément).
 
@@ -201,10 +362,13 @@ def _create_game(white_name: str, black_name: str, level: str,
         "clock_cfg": clock_cfg,
         "clock_ms": {"white": clock_cfg["base_ms"], "black": clock_cfg["base_ms"]}
         if clock_cfg else None,
-        "turn_started_at": time.time(),
+        # horloge arrêtée tant que les deux camps ne sont pas couverts
+        "clock_started": False,
+        "turn_started_at": None if clock_cfg else time.time(),
         "flagged": None,  # camp qui a perdu au temps
         "move_clocks": [],  # temps consommé par coup (debrief)
     }
+    _maybe_start_clock(game)
     game_id = uuid.uuid4().hex[:8]
     GAMES[game_id] = game
     return game_id
@@ -219,6 +383,8 @@ def _check_flag(game: dict) -> None:
     """Détecte le drapeau du camp au trait si son temps est épuisé."""
     if game["clock_cfg"] is None or game["flagged"] is not None:
         return
+    if game["turn_started_at"] is None:
+        return  # horloge pas encore démarrée (adversaire pas arrivé)
     if game["resigned"] or game["board"].is_game_over():
         return
     color = "white" if game["board"].turn == chess.WHITE else "black"
@@ -234,7 +400,10 @@ def _apply_clock_move(game: dict, color: str) -> None:
     if game["clock_cfg"] is None:
         game["move_clocks"].append(None)
         return
-    elapsed_ms = (time.time() - game["turn_started_at"]) * 1000
+    if game["turn_started_at"] is None:
+        _maybe_start_clock(game)
+    elapsed_ms = (0.0 if game["turn_started_at"] is None
+                  else (time.time() - game["turn_started_at"]) * 1000)
     remaining = game["clock_ms"][color] - elapsed_ms
     spent = min(elapsed_ms, game["clock_ms"][color])
     if remaining <= 0:
@@ -256,9 +425,14 @@ def _clock_state(game: dict) -> dict | None:
         return None
     _check_flag(game)
     running = None
-    if not _is_over(game):
+    if not _is_over(game) and game["turn_started_at"] is not None:
         running = "white" if game["board"].turn == chess.WHITE else "black"
-    result = {"running": running, "base_ms": game["clock_cfg"]["base_ms"]}
+    result = {
+        "running": running,
+        # False tant qu'un des deux camps n'est pas encore couvert (joueur/moteur)
+        "started": game["clock_started"],
+        "base_ms": game["clock_cfg"]["base_ms"],
+    }
     for color in ("white", "black"):
         remaining = game["clock_ms"][color]
         if running == color:
@@ -313,7 +487,10 @@ def new_game(white: str = "Blancs", black: str = "Noirs",
         clock: horloge de la partie, "10+0" (10 minutes + 0 s d'incrément)
             ou "infinite"/None pour jouer sans limite de temps. Le temps
             restant est visible via get_board et sur l'interface web ; le
-            camp dont le temps s'épuise perd au drapeau.
+            camp dont le temps s'épuise perd au drapeau. L'horloge ne démarre
+            que lorsque les deux camps sont couverts (joueur ayant rejoint via
+            join_game, ou moteur) : avec une horloge, le premier coup des
+            blancs est refusé tant que le camp noir n'est pas couvert.
     """
     level = _check_level(level)
     if engine_color is not None:
@@ -489,6 +666,7 @@ def join_game(game_id: str, player: str, color: str | None = None,
 
     game[f"{color}_seat"] = player
     game[f"{color}_name"] = player
+    _maybe_start_clock(game)  # l'horloge démarre quand les deux camps sont couverts
     return {
         "game_id": game_id,
         "your_color": color,
@@ -539,7 +717,8 @@ def get_board(game_id: str, ply: int | None = None) -> dict:
         # l'agent qui poll get_board soit informé sans avoir à deviner
         # via l'horloge à 0.
         "over": _is_over(game),
-        "result": _game_over_info(board, game) or None,
+        "result": _result_text(game) or None,
+        "winner": _winner(game),
         **_turn_info(game),
         # en relecture, le trait est celui de la position rejouée
         "turn": "white" if replay.turn == chess.WHITE else "black",
@@ -571,9 +750,14 @@ def play_move(game_id: str, move: str, color: str | None = None,
 
     Args:
         game_id: identifiant de la partie (ou de l'échiquier d'analyse).
-        move: le coup, ex. "e4", "Nf3", "O-O", "e2e4" ou "e7e8q".
+        move: le coup, ex. "e4", "Nf3", "O-O", "e2e4" ou "e7e8q". Un SAN ambigu
+            (ex. « Nxd5 » alors que deux cavaliers peuvent prendre en d5) est
+            refusé avec la liste des coups possibles — précisez la case de
+            départ (ex. « Ncd5 »). Aucun coup n'est jamais résolu silencieusement.
         color: camp qui joue, "white" ou "black". Par défaut, le camp au trait.
             Refusé si c'est le camp joué par le moteur (il joue lui-même).
+            Avec une horloge, le premier coup des blancs est refusé tant que
+            le camp adverse n'est pas couvert (rejoint ou moteur).
         player: nom du joueur. Si le camp est occupé (join_game), ce nom doit
             correspondre à l'occupant ; si le camp est libre, le passer
             revient à l'occuper. Sans player, un camp libre reste jouable par
@@ -583,15 +767,11 @@ def play_move(game_id: str, move: str, color: str | None = None,
     board = game["board"]
     _check_flag(game)
     if game["flagged"] is not None:
-        loser = game["flagged"]
-        raise ValueError(
-            f"La partie est terminée : {'Blancs' if loser == 'white' else 'Noirs'} "
-            "ont perdu au drapeau (temps écoulé)."
-        )
+        raise ValueError(f"La partie est terminée : {_result_text(game)}")
     if game["resigned"]:
-        raise ValueError("La partie est terminée (abandon).")
+        raise ValueError(f"La partie est terminée : {_result_text(game)}")
     if board.is_game_over():
-        raise ValueError("La partie est déjà terminée.")
+        raise ValueError(f"La partie est déjà terminée : {_result_text(game)}")
 
     if color is None:
         color = "white" if board.turn == chess.WHITE else "black"
@@ -600,6 +780,7 @@ def play_move(game_id: str, move: str, color: str | None = None,
         raise ValueError(f"Le camp {color} est joué par le moteur.")
     if board.turn != _color_side(color):
         raise ValueError(f"Ce n'est pas le tour des {color}s.")
+    _check_first_move_allowed(game, color)
 
     seat = game[f"{color}_seat"]
     other = "black" if color == "white" else "white"
@@ -618,17 +799,19 @@ def play_move(game_id: str, move: str, color: str | None = None,
         if seat is None and player:
             game[f"{color}_seat"] = player
             game[f"{color}_name"] = player
+            _maybe_start_clock(game)
     elif seat is not None:
         raise ValueError(
             f"Le camp {color} est occupé par « {seat} » — identifiez-vous "
             f"avec player=\"{seat}\" ou rejoignez l'autre camp."
         )
 
-    parsed = _parse_move(board, move)
+    parsed = _parse_move(board, move)  # lève ValueError si le SAN est ambigu
     if parsed is None or parsed not in board.legal_moves:
         raise ValueError(f"Coup illégal ou invalide : {move}")
 
     san = board.san(parsed)
+    _ensure_clock_started(game)  # au plus tard au premier coup
     board.push(parsed)
     _apply_clock_move(game, color)
     reply = None
@@ -644,9 +827,12 @@ def play_move(game_id: str, move: str, color: str | None = None,
         "in_check": board.is_check(),
         **_turn_info(game),
     }
-    end = _game_over_info(board, game)
+    end = _result_text(game)
     if end:
         result["game_over"] = end
+        winner = _winner(game)
+        if winner:
+            result["winner"] = winner
     return result
 
 
@@ -676,16 +862,16 @@ def wait_for_turn(game_id: str, color: str | None = None, timeout_seconds: int =
         _check_flag(game)
         over = _is_over(game)
         if over:
-            if game["resigned"]:
-                who = game[f"{game['resigned_by']}_name"]
-                end = f"{who} ({game['resigned_by']}) a abandonné."
-            else:
-                end = _game_over_info(board, game)
-            return {
+            end = _result_text(game)
+            result = {
                 "ready": False,
                 "game_over": end,
                 **_turn_info(game),
             }
+            winner = _winner(game)
+            if winner:
+                result["winner"] = winner
+            return result
         if board.turn == target:
             return {
                 "ready": True,
@@ -720,22 +906,40 @@ def undo(game_id: str) -> dict:
 
 
 @mcp.tool()
-def resign(game_id: str, color: str | None = None) -> dict:
-    """Abandonne la partie pour le camp indiqué.
+def resign(game_id: str, color: str | None = None, player: str | None = None) -> dict:
+    """Abandonne la partie pour un camp ou un joueur — le vainqueur est nommé.
 
     Args:
         game_id: identifiant de la partie.
         color: camp qui abandonne, "white" ou "black" (défaut : camp au trait).
+        player: nom du joueur qui abandonne — résolu en camp via les places
+            prises (join_game). Refusé si ce nom n'occupe aucun camp, ou si
+            `color` désigne un camp différent.
     """
     game = _get_game(game_id)
     board = game["board"]
+    if player is not None:
+        player = str(player).strip()
+        if not player:
+            raise ValueError("player doit être un nom non vide.")
+        seats = [c for c in ("white", "black") if game[f"{c}_seat"] == player]
+        if not seats:
+            raise ValueError(f"« {player} » n'occupe aucun camp de cette partie.")
+        if color is not None and _check_color(color) != seats[0]:
+            raise ValueError(f"« {player} » occupe le camp {seats[0]}, pas {color}.")
+        color = seats[0]
     if color is None:
         color = "white" if board.turn == chess.WHITE else "black"
     color = _check_color(color)
+    if _is_over(game):
+        raise ValueError(f"La partie est déjà terminée : {_result_text(game)}")
     game["resigned"] = True
     game["resigned_by"] = color
-    winner = game["black_name"] if color == "white" else game["white_name"]
-    return {"game_over": f"{game[f'{color}_name']} ({color}) abandonne. {winner} gagne."}
+    result = {"game_over": _result_text(game)}
+    winner = _winner(game)
+    if winner:
+        result["winner"] = winner
+    return result
 
 
 @mcp.tool()
@@ -743,22 +947,20 @@ def game_status(game_id: str) -> dict:
     """Statut de la partie : joueurs, trait, numéro de coup, fin éventuelle."""
     game = _get_game(game_id)
     board = game["board"]
+    _check_flag(game)  # un drapeau tombé doit apparaître dans le statut
     status = {
         "level": game["level"],
         "move_number": board.fullmove_number,
         "moves_played": len(board.move_stack),
         "in_check": board.is_check(),
-        "over": game["resigned"] or board.is_game_over(),
+        "over": _is_over(game),
         **_turn_info(game),
     }
-    if game["resigned"]:
-        who = game[f"{game['resigned_by']}_name"]
-        status["result"] = (
-            _game_over_info(board, game)
-            or f"{who} ({game['resigned_by']}) a abandonné."
-        )
-    elif board.is_game_over():
-        status["result"] = _game_over_info(board, game)
+    if _is_over(game):
+        status["result"] = _result_text(game)
+        winner = _winner(game)
+        if winner:
+            status["winner"] = winner
     return status
 
 
@@ -928,7 +1130,10 @@ def try_puzzle_move(puzzle_id: str, move: str,
     line = puzzle["Moves"].split()
     plies_done = session["plies_done"]
 
-    parsed = _parse_move(board, move)
+    try:
+        parsed = _parse_move(board, move)
+    except ValueError as exc:  # SAN ambigu
+        return {"correct": False, "note": str(exc)}
     if parsed is None or parsed not in board.legal_moves:
         return {"correct": False, "note": f"Coup invalide ou illégal : {move}"}
 
@@ -977,6 +1182,8 @@ def analyze_game(game_id: str, depth: int = 15, publish: bool = True) -> dict:
 
     Retourne un PGN annoté compatible Lichess ([%eval ...], erreurs marquées)
     et la liste des coups critiques (imprécisions, erreurs, blunders).
+    Le PGN exporté porte des en-têtes complets : White/Black (noms des joueurs),
+    Result (1-0, 0-1, 1/2-1/2 ou *) et Date du jour.
 
     Avec publish=True (défaut), l'analyse est aussi **publiée sur l'interface
     web** : la page de la partie affiche la jauge d'évaluation et marque les
@@ -994,7 +1201,10 @@ def analyze_game(game_id: str, depth: int = 15, publish: bool = True) -> dict:
     # La position racine est le FEN de départ (échiquiers d'analyse inclus) :
     # sans elle, les coups seraient illégaux depuis la position initiale.
     result = analyze_moves(moves, depth, root=game["board"].root(),
-                           move_clocks=game["move_clocks"])
+                           move_clocks=game["move_clocks"],
+                           white_name=game["white_name"],
+                           black_name=game["black_name"],
+                           result=_pgn_result(game))
     result["game_id"] = game_id
     if publish:
         game["analysis"] = {"depth": depth, "evals": result["evals"]}
@@ -1039,8 +1249,10 @@ def analyze_pgn(pgn: str, depth: int = 15) -> dict:
     if not moves:
         raise ValueError("Aucun coup trouvé dans ce PGN.")
     # La position racine du PGN (en-tête FEN) doit être transmise : sans elle,
-    # les coups seraient rejoués depuis la position initiale.
-    return analyze_moves(moves, depth, root=game.board())
+    # les coups seraient rejoués depuis la position initiale. Les en-têtes du
+    # PGN source (White, Black, Date, Result...) sont conservés dans l'export.
+    headers = {k: str(v) for k, v in game.headers.items()}
+    return analyze_moves(moves, depth, root=game.board(), headers=headers)
 
 
 # ---------------------------------------------------------------------------
@@ -1110,12 +1322,8 @@ def _web_state(game_id: str, game: dict, your_color: str | None) -> dict:
         ]
         for rank in range(7, -1, -1)
     ]
-    result = ""
-    if game["resigned"]:
-        who = game[f"{game['resigned_by']}_name"]
-        result = f"{who} ({game['resigned_by']}) a abandonné."
-    elif over:
-        result = _game_over_info(board, game)
+    result = _result_text(game) if over else ""
+    winner = _winner(game) if over else None
     your_turn = (
         not over and your_color is not None
         and board.turn == _color_side(your_color)
@@ -1139,6 +1347,7 @@ def _web_state(game_id: str, game: dict, your_color: str | None) -> dict:
         "over": over,
         "clock": _clock_state(game),
         "result": result,
+        "winner": winner,
         "moves": _san_history(board),
         "history": _full_history(game),
         "status": _game_status(game),
@@ -1322,6 +1531,9 @@ async def web_new_game(request: Request) -> JSONResponse:
     game_id = _create_game(white_name, black_name, level, engine_color,
                            clock_cfg=clock_cfg)
     game = GAMES[game_id]
+    # le créateur occupe son camp (verrouillé à son nom, comme join_game)
+    game[f"{your_color}_seat"] = your_name
+    _maybe_start_clock(game)
     if engine_color == "white":
         await run_in_threadpool(_engine_reply, game)
     return JSONResponse(_web_state(game_id, game, your_color))
@@ -1389,15 +1601,19 @@ async def web_play_move(request: Request) -> JSONResponse:
         return JSONResponse({"error": "your_color doit valoir 'white' ou 'black'"}, status_code=400)
     _check_flag(game)
     if game["flagged"] is not None:
-        return JSONResponse({"error": "la partie est terminée : temps écoulé"}, status_code=400)
+        return JSONResponse({"error": f"partie terminée : {_result_text(game)}"}, status_code=400)
     if game["resigned"]:
-        return JSONResponse({"error": "la partie est terminée (abandon)"}, status_code=400)
+        return JSONResponse({"error": f"partie terminée : {_result_text(game)}"}, status_code=400)
     if board.is_game_over():
-        return JSONResponse({"error": "la partie est déjà terminée"}, status_code=400)
+        return JSONResponse({"error": f"partie déjà terminée : {_result_text(game)}"}, status_code=400)
     if game["engine_color"] == your_color:
         return JSONResponse({"error": "ce camp est joué par le moteur"}, status_code=400)
     if board.turn != _color_side(your_color):
         return JSONResponse({"error": "ce n'est pas le tour de ce camp"}, status_code=400)
+    try:
+        _check_first_move_allowed(game, your_color)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
     your_name = str(body.get("your_name", "")).strip()
     seat = game[f"{your_color}_seat"]
     other = "black" if your_color == "white" else "white"
@@ -1408,14 +1624,50 @@ async def web_play_move(request: Request) -> JSONResponse:
             return JSONResponse({"error": "un joueur ne peut pas jouer les deux camps"}, status_code=400)
         game[f"{your_color}_seat"] = your_name
         game[f"{your_color}_name"] = your_name
+        _maybe_start_clock(game)
     move = str(body.get("move", ""))
-    parsed = _parse_move(board, move)
+    try:
+        parsed = _parse_move(board, move)  # lève ValueError si le SAN est ambigu
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
     if parsed is None or parsed not in board.legal_moves:
         return JSONResponse({"error": f"coup illégal ou invalide : {move}"}, status_code=400)
+    _ensure_clock_started(game)
     board.push(parsed)
     _apply_clock_move(game, your_color)
     if game["engine_color"] and not board.is_game_over():
         await run_in_threadpool(_engine_reply, game)
+    return JSONResponse(_web_state(game_id, game, your_color))
+
+
+@mcp.custom_route("/web/api/games/{game_id}/resign", methods=["POST"])
+async def web_resign_game(request: Request) -> JSONResponse:
+    """Abandon via l'interface web : réservé aux joueurs (pas aux spectateurs)."""
+    if not _web_authorized(request):
+        return JSONResponse({"error": "non autorisé"}, status_code=401)
+    game_id = request.path_params["game_id"]
+    if game_id not in GAMES:
+        return JSONResponse({"error": "partie inconnue"}, status_code=404)
+    game = GAMES[game_id]
+    body = await request.json()
+    your_color = str(body.get("your_color", "")).lower()
+    if your_color not in ("white", "black"):
+        return JSONResponse(
+            {"error": "your_color doit valoir 'white' ou 'black' (les spectateurs n'abandonnent pas)"},
+            status_code=400,
+        )
+    if game["engine_color"] == your_color:
+        return JSONResponse({"error": "ce camp est joué par le moteur"}, status_code=400)
+    your_name = str(body.get("your_name", "")).strip()
+    seat = game[f"{your_color}_seat"]
+    if seat is not None and your_name != seat:
+        return JSONResponse({"error": f"le camp {your_color} est occupé par {seat}"}, status_code=400)
+    if _is_over(game):
+        return JSONResponse(
+            {"error": f"la partie est déjà terminée : {_result_text(game)}"}, status_code=400
+        )
+    game["resigned"] = True
+    game["resigned_by"] = your_color
     return JSONResponse(_web_state(game_id, game, your_color))
 
 
