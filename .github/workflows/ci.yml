@@ -45,11 +45,11 @@ jobs:
               async with Client(server.mcp) as c:
                   tools = await c.list_tools()
                   names = {t.name for t in tools}
-                  # outils attendus (le compte exact dépend de l'ordre de merge
-                  # des PR ajoutant list_games / start_puzzle / list_puzzles)
+                  # outils de base toujours attendus : les PR ajoutant de nouveaux
+                  # outils (list_games, start_puzzle, list_puzzles...) sont additives,
+                  # on ne fige donc pas le compte total (identique sur chaque PR).
                   expected = {
-                      "new_game", "new_analysis_board", "start_puzzle",
-                      "list_puzzles",
+                      "new_game", "new_analysis_board",
                       "join_game", "get_board", "legal_moves", "play_move",
                       "wait_for_turn", "undo", "resign", "game_status",
                       "next_puzzle", "try_puzzle_move", "analyze_game",
