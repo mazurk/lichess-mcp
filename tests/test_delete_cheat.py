@@ -132,6 +132,30 @@ def test_analyze_while_puzzle_in_progress_flags_cheat():
 
 
 @needs_stockfish
+def test_analysis_done_before_game_start_is_not_cheating():
+    """Un board déjà analysé AVANT le début de la partie en cours : ré-analyser
+    pendant la partie ne lève PAS d'alerte (l'analyse préexistait)."""
+    aid = server.new_analysis_board()["game_id"]
+    server.play_move(aid, "e4", color="white")
+    r1 = server.analyze_game(aid, depth=3, publish=False)  # avant toute partie
+    assert r1["cheat_detected"] is False
+    assert server.CHEAT_ALERTS == []
+    # une partie démarre ensuite
+    gid = server.new_game(white="A", black="B")["game_id"]
+    server.play_move(gid, "e4", color="white")
+    # ré-analyser le même board pendant la partie : analyse préexistante -> pas d'alerte
+    r2 = server.analyze_game(aid, depth=3, publish=False)
+    assert r2["cheat_detected"] is False
+    assert server.CHEAT_ALERTS == []
+    # mais analyser un board SANS analyse préalable pendant la partie -> alerte
+    aid2 = server.new_analysis_board()["game_id"]
+    server.play_move(aid2, "d4", color="white")
+    r3 = server.analyze_game(aid2, depth=3, publish=False)
+    assert r3["cheat_detected"] is True
+    assert gid in server.CHEAT_ALERTS[-1]["while_in_progress"]
+
+
+@needs_stockfish
 def test_no_cheat_alert_without_game_or_puzzle_in_progress():
     aid = server.new_analysis_board()["game_id"]
     server.play_move(aid, "e4", color="white")
@@ -162,8 +186,9 @@ def test_web_state_and_ui_expose_cheat_alert(client):
     assert state["cheat_detected"] is True
     assert len(state["cheat_alerts"]) == 1
     assert state["cheat_alerts"][0]["analyzed"] == gid
-    # l'alerte est affichée sous l'échiquier dans l'UI
+    # l'alerte est affichée sous l'échiquier dans l'UI, label seul « Triche détectée »
     html = (server.WEB_DIR / "index.html").read_text(encoding="utf-8")
     js = (server.WEB_DIR / "app.js").read_text(encoding="utf-8")
     assert 'id="cheatAlert"' in html
-    assert "cheatAlert" in js and "cheat_detected" in js and "Triche détectée" in js
+    assert "cheatAlert" in js and "cheat_detected" in js
+    assert 'cheatEl.textContent = "Triche détectée"' in js
