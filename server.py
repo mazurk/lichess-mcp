@@ -1627,10 +1627,15 @@ def _web_state(game_id: str, game: dict, your_color: str | None) -> dict:
         "clock": _clock_state(game),
         "result": result,
         "winner": winner,
-        # alerte anti-triche globale : tout analyze_game lancé pendant une
-        # partie/un puzzle en cours est affiché sous l'échiquier
-        "cheat_detected": bool(CHEAT_ALERTS),
-        "cheat_alerts": CHEAT_ALERTS[-5:],
+        # Alerte anti-triche CONTEXTUELLE : le bandeau « Triche détectée »
+        # s'affiche sous l'échiquier d'une partie/d'un puzzle qui était EN
+        # COURS au moment d'un analyze_game (while_in_progress) — jamais sur
+        # les autres échiquiers (un puzzle fraîchement lancé n'a rien à voir
+        # avec une alerte levée pendant une autre partie).
+        "cheat_alerts": [a for a in CHEAT_ALERTS
+                         if game_id in a.get("while_in_progress", [])][-5:],
+        "cheat_detected": any(game_id in a.get("while_in_progress", [])
+                              for a in CHEAT_ALERTS),
         "moves": _san_history(board),
         "history": _full_history(game),
         "status": _game_status(game),
