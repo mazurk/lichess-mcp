@@ -54,13 +54,33 @@ Co-Authored-By: Mistral Vibe <vibe@mistral.ai>
    (rellire les check runs du PR).
 4. **Merger la PR dans `main`** une fois la CI verte.
 
-## 6. Post-merge (déploiement)
+## 6. Livraison dans DELIVERY, puis post-merge depuis ce dossier
 
-```bash
-docker compose down
-git checkout main && git pull --ff-only origin main
-docker compose up -d --build
-# ouvrir Edge sur https://mazurkiewicz1.zapto.org
-```
+Après le merge dans `main` :
+
+1. Mettre le dossier local à jour :
+   `git checkout main && git pull --ff-only origin main`
+2. **Livrer le travail dans le dossier local `DELIVERY/`** (à la racine du
+   dépôt, **hors git** : il est listé dans `.gitignore`). Copie du tree mergé
+   (`.env` et `Caddyfile` inclus — ils sont hors git mais requis par compose),
+   sans `.git`, `.venv`, caches ni notes non commitées :
+
+   ```bash
+   rsync -a --exclude .git --exclude .venv --exclude DELIVERY \
+     --exclude __pycache__ --exclude .pytest_cache --exclude .ruff_cache \
+     --exclude node_modules --exclude prompt.txt ./ DELIVERY/
+   ```
+
+3. **Se placer dans `DELIVERY` pour toutes les actions post-merge** — le
+   déploiement est coupé puis relancé depuis la livraison (nom de projet
+   compose inchangé `-p lichess-mcp`, sinon les ports 80/443 seraient déjà
+   pris par l'ancien projet) :
+
+   ```bash
+   cd DELIVERY
+   docker compose -p lichess-mcp down
+   docker compose -p lichess-mcp up -d --build
+   # ouvrir Edge sur https://mazurkiewicz1.zapto.org
+   ```
 
 Vérifier que le site répond (HTTPS 200) et faire un smoke test rapide si pertinent.

@@ -5,3 +5,4 @@ venv/
 .env
 Caddyfile
 node_modules/
+DELIVERY/
