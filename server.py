@@ -892,7 +892,13 @@ WEB_DIR = Path(__file__).parent / "web"
 
 
 def _san_history(board: chess.Board) -> list[str]:
-    replay = chess.Board()
+    # rejouer depuis la position racine (FEN de départ des échiquiers
+    # d'analyse) — depuis la position initiale standard, les SAN d'un board
+    # à FEN personnalisé seraient faux (python-chess génère du garbage sur
+    # des coups illégaux dans la position de rejouage).
+    replay = board.copy()
+    while replay.move_stack:
+        replay.pop()
     history = []
     for move in board.move_stack:
         history.append(replay.san(move))
@@ -955,6 +961,7 @@ def _web_state(game_id: str, game: dict, your_color: str | None) -> dict:
     return {
         "game_id": game_id,
         "fen": board.fen(),
+        "start_fen": board.root().fen(),
         "board": grid,
         "white_name": game["white_name"],
         "black_name": game["black_name"],

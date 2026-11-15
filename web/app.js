@@ -178,7 +178,8 @@ function isLive() {
   // En direct si aucune navigation, ou position du dernier coup atteinte.
   if (viewPly === null) return true;
   const hist = state && state.history ? state.history : [];
-  return viewPly >= hist.length - 1;
+  // viewPly = nombre de coups joués dans la vue (0 = position de départ)
+  return viewPly >= hist.length;
 }
 
 function render() {
@@ -191,9 +192,11 @@ function render() {
   // Position affichée : historique navigué ou position en direct.
   const hist = state.history || [];
   let grid, lastMove, legal;
-  if (viewPly !== null && viewPly < hist.length - 1) {
-    grid = fenToGrid(hist[viewPly].fen);
-    lastMove = hist[viewPly].uci;
+  if (viewPly !== null && viewPly < hist.length) {
+    // 0 = position de départ (FEN racine, avant le premier coup)
+    grid = viewPly === 0 ? fenToGrid(state.start_fen)
+      : fenToGrid(hist[viewPly - 1].fen);
+    lastMove = viewPly > 0 ? hist[viewPly - 1].uci : null;
     legal = [];
   } else {
     grid = state.board;
@@ -258,7 +261,7 @@ function renderMoves() {
     movesEl.innerHTML = "<i>Aucun coup joué.</i>";
     return;
   }
-  const current = (viewPly === null || isLive()) ? state.moves.length - 1 : viewPly;
+  const current = (viewPly === null || isLive()) ? state.moves.length - 1 : viewPly - 1;
   const moveHtml = (i) => {
     const m = state.moves[i];
     const inf = moveInfo(i);
@@ -281,24 +284,25 @@ function renderMoves() {
   }
   movesEl.innerHTML = html;
   movesEl.querySelectorAll(".mv").forEach((el) => {
-    el.onclick = () => setView(Number(el.dataset.ply));
+    el.onclick = () => setView(Number(el.dataset.ply) + 1);
   });
 }
 
 function setView(ply) {
-  // Navigation dans l'historique ; le dernier coup revient en direct.
+  // Navigation dans l'historique ; ply = nombre de coups joués dans la vue
+  // (0 = position de départ) ; le dernier coup revient en direct.
   const hist = state.history || [];
-  if (ply === null || ply >= hist.length - 1) {
+  if (ply === null || ply >= hist.length) {
     viewPly = null;
   } else {
-    viewPly = Math.max(0, Math.min(ply, hist.length - 1));
+    viewPly = Math.max(0, Math.min(ply, hist.length));
   }
   selected = null;
   render();
 }
 
 function navFirst() { if (state && state.history && state.history.length) setView(0); }
-function navPrev() { if (state && state.history && state.history.length) setView((viewPly === null ? state.history.length - 1 : viewPly) - 1); }
+function navPrev() { if (state && state.history && state.history.length) setView((viewPly === null ? state.history.length : viewPly) - 1); }
 function navNext() { if (state && state.history && state.history.length) setView(viewPly === null ? null : viewPly + 1); }
 function navLast() { setView(null); }
 
@@ -333,8 +337,8 @@ function browsingClockMs(color) {
   // En relecture : temps restant d'un camp au pli consulté = son dernier
   // relevé d'horloge parmi les coups 0..viewPly (sinon le temps de base).
   const hist = state.history || [];
-  const upto = (viewPly === null) ? hist.length - 1 : viewPly;
-  for (let i = upto; i >= 0; i--) {
+  const upto = (viewPly === null) ? hist.length : viewPly;
+  for (let i = upto - 1; i >= 0; i--) {
     const c = hist[i] && hist[i].clock;
     if (c && c.color === color) return c.remaining_ms;
   }
@@ -376,7 +380,7 @@ function renderGameStatus() {
   }
   if (viewPly !== null && !isLive()) {
     html += ' <span class="badge browsing">relecture : coup '
-      + (viewPly + 1) + "/" + state.history.length
+      + viewPly + "/" + state.history.length
       + ' — <a href="#" id="backLive">retour au direct</a></span>';
   }
   el.innerHTML = html;
