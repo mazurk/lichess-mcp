@@ -59,7 +59,11 @@ Co-Authored-By: Mistral Vibe <vibe@mistral.ai>
    `main` (titre explicite, description des évolutions + tests effectués).
 3. Corriger **tous les problèmes remontés par la CI** jusqu'au vert
    (rellire les check runs du PR).
-4. **Merger la PR dans `main`** une fois la CI verte.
+4. **Merger la PR dans `main`** une fois la CI verte. Le dépôt est réglé avec
+   `delete_branch_on_merge: true` : **la branche distante est supprimée
+   automatiquement au merge** (plus besoin de nettoyer les anciennes branches
+   à la main). En local, supprimer la branche fusionnée :
+   `git checkout main && git pull --ff-only origin main && git branch -D <branche>`.
 
 ## 6. Livraison dans DELIVERY, puis post-merge depuis ce dossier
 
