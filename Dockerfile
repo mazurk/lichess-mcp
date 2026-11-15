@@ -11,6 +11,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY server.py engine.py analysis.py puzzles.json ./
 COPY web/ ./web/
 
+# état persisté des parties (monté sur le volume nommé games_data en compose)
+RUN mkdir -p /app/data
+
 EXPOSE 8000
 
 CMD ["python", "server.py"]

@@ -20,6 +20,9 @@ services:
       LICHESS_MCP_AUTH_TOKEN: ${LICHESS_MCP_AUTH_TOKEN:?Définissez LICHESS_MCP_AUTH_TOKEN dans .env}
     expose:
       - "8000"
+    volumes:
+      # parties persistantes : survivent à la recréation du conteneur
+      - games_data:/app/data
     restart: unless-stopped
 
   caddy:
@@ -38,3 +41,4 @@ services:
 volumes:
   caddy_data:
   caddy_config:
+  games_data:

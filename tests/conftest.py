@@ -1,8 +1,16 @@
 import asyncio
+import os
+import tempfile
 
 import httpx
 import pytest
 from httpx import ASGITransport
+
+# Isole la persistance des tests : jamais d'écriture dans le data/ du dépôt.
+os.environ.setdefault(
+    "LICHESS_MCP_STATE_FILE",
+    os.path.join(tempfile.mkdtemp(prefix="lichess-mcp-test-"), "server_state.json"),
+)
 
 import server
 
