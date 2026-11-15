@@ -151,6 +151,22 @@ function afterState() {
       (!state.over && !spectator && state.your_color !== null && state.your_color !== undefined)
         ? "block" : "none";
   }
+  // Alerte « triche détectée » sous l'échiquier : tout analyze_game appelé
+  // pendant qu'une partie ou un puzzle est en cours (même sur un autre
+  // échiquier) est remonté ici.
+  const cheatEl = document.getElementById("cheatAlert");
+  if (cheatEl) {
+    const alerts = state.cheat_alerts || [];
+    if (state.cheat_detected && alerts.length) {
+      const last = alerts[alerts.length - 1];
+      cheatEl.style.display = "block";
+      cheatEl.textContent = "Triche détectée : analyze_game appelé pendant une partie en cours ("
+        + alerts.length + " alerte" + (alerts.length > 1 ? "s" : "")
+        + (last && last.analyzed ? ", dernier échiquier analysé : " + last.analyzed : "") + ")";
+    } else {
+      cheatEl.style.display = "none";
+    }
+  }
   if (state.over) {
     setStatus("Partie terminée.", "ok");
     stopPolling();

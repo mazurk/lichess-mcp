@@ -56,6 +56,10 @@ PUZZLES: list[dict] = json.loads(
     (Path(__file__).parent / "puzzles.json").read_text(encoding="utf-8")
 )
 ACTIVE_PUZZLES: dict[str, dict] = {}
+# Alertes « triche détectée » : tout appel à analyze_game effectué alors
+# qu'une partie ou un puzzle est en cours y est enregistré (alerte globale,
+# quel que soit l'échiquier analysé) et affiché sur l'interface web.
+CHEAT_ALERTS: list[dict] = []
 
 
 def _board_str(board: chess.Board) -> str:
@@ -1004,6 +1008,34 @@ def get_moves(game_id: str, from_ply: int | None = None) -> dict:
     }
 
 
+@mcp.tool()
+def delete_game(game_id: str) -> dict:
+    """Supprime définitivement une partie, un échiquier d'analyse ou un puzzle
+    publié du serveur (utile pour nettoyer les échiquiers d'analyse créés pour
+    tester des coups).
+
+    La partie disparaît de list_games et de l'interface web ; les appels
+    ultérieurs sur cet identifiant échouent (« Partie inconnue »).
+
+    Args:
+        game_id: identifiant à supprimer (retourné par new_game,
+            new_analysis_board, start_puzzle ou list_games).
+    """
+    game = _get_game(game_id)  # lève ValueError si inconnu
+    kind = game["kind"]
+    puzzle_id = ((game.get("puzzle") or {}).get("puzzle") or {}).get("PuzzleId")
+    was_over = _is_over(game)
+    del GAMES[game_id]
+    if puzzle_id:
+        ACTIVE_PUZZLES.pop(puzzle_id, None)
+    return {
+        "deleted": game_id,
+        "kind": kind,
+        "was_over": was_over,
+        "remaining": len(GAMES),
+    }
+
+
 def _start_puzzle(puzzle: dict) -> dict:
     """Initialise une session de puzzle (état multi-coups pour les mats en 2)."""
     board = chess.Board(puzzle["FEN"])
@@ -1216,6 +1248,23 @@ def try_puzzle_move(puzzle_id: str, move: str,
     }
 
 
+def _note_cheat(analyzed_id: str) -> dict | None:
+    """Enregistre une alerte « triche détectée » si un analyze_game est lancé
+    alors qu'une partie ou un puzzle est en cours — quel que soit l'échiquier
+    analysé (même un id différent de la partie en cours)."""
+    in_progress = [gid for gid, g in GAMES.items()
+                   if g["kind"] in ("game", "puzzle") and not _is_over(g)]
+    if not in_progress:
+        return None
+    alert = {
+        "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "analyzed": analyzed_id,
+        "while_in_progress": in_progress,
+    }
+    CHEAT_ALERTS.append(alert)
+    return alert
+
+
 @mcp.tool()
 def analyze_game(game_id: str, depth: int = 15, publish: bool = True) -> dict:
     """Analyse une partie (ou un échiquier d'analyse) avec Stockfish.
@@ -1229,12 +1278,18 @@ def analyze_game(game_id: str, depth: int = 15, publish: bool = True) -> dict:
     web** : la page de la partie affiche la jauge d'évaluation et marque les
     coups gaffés (blunder/erreur/imprécision) pour le debrief.
 
+    **Alerte anti-triche** : si une partie ou un puzzle est en cours au moment
+    de l'appel (quel que soit l'échiquier analysé), l'appel est enregistré
+    comme « triche détectée » (`cheat_detected` dans le résultat) et une
+    alerte est affichée sous l'échiquier sur l'interface web.
+
     Args:
         game_id: identifiant de la partie ou de l'échiquier d'analyse.
         depth: profondeur d'analyse Stockfish (1 à 30, défaut 15).
         publish: publier l'analyse sur l'interface web (défaut True).
     """
     game = _get_game(game_id)
+    cheat_alert = _note_cheat(game_id)  # tout appel, même sur un autre échiquier
     moves = list(game["board"].move_stack)
     if not moves:
         raise ValueError("Aucun coup à analyser dans cette partie.")
@@ -1246,6 +1301,9 @@ def analyze_game(game_id: str, depth: int = 15, publish: bool = True) -> dict:
                            black_name=game["black_name"],
                            result=_pgn_result(game))
     result["game_id"] = game_id
+    result["cheat_detected"] = cheat_alert is not None
+    if cheat_alert is not None:
+        result["cheat_alert"] = cheat_alert
     if publish:
         game["analysis"] = {"depth": depth, "evals": result["evals"]}
         result["published"] = True
@@ -1388,6 +1446,10 @@ def _web_state(game_id: str, game: dict, your_color: str | None) -> dict:
         "clock": _clock_state(game),
         "result": result,
         "winner": winner,
+        # alerte anti-triche globale : tout analyze_game lancé pendant une
+        # partie/un puzzle en cours est affiché sous l'échiquier
+        "cheat_detected": bool(CHEAT_ALERTS),
+        "cheat_alerts": CHEAT_ALERTS[-5:],
         "moves": _san_history(board),
         "history": _full_history(game),
         "status": _game_status(game),

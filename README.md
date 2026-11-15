@@ -55,12 +55,13 @@ format Lichess (FEN + coups UCI).
 | `resign(game_id, color, player)` | Abandon pour le camp indiqué (défaut : camp au trait) ou pour le **joueur nommé** (`player`, résolu via les places prises) ; le nom du vainqueur est toujours renvoyé |
 | `game_status(game_id)` | Statut : joueurs, trait, fin éventuelle — un drapeau tombé est détecté à chaque lecture (`over` bascule, avec `result`/`winner`) |
 | `get_moves(game_id, from_ply)` | Coups joués en SAN (+ UCI), dans l'ordre ; `from_ply` ne renvoie que la fin (index 0-based du 1er demi-coup) |
+| `delete_game(game_id)` | Supprime définitivement une partie / un échiquier d'analyse / un puzzle publié (utile pour nettoyer les échiquiers de test) |
 | `list_games(kind)` | Liste les parties du serveur sans besoin de l'identifiant (`kind` = `game`, `analysis`, `puzzle` ou None) : id, joueurs, trait, FEN, statut |
 | `next_puzzle()` | Tire un puzzle (mat en 1 ou en 2) |
 | `try_puzzle_move(puzzle_id, move, game_id)` | Propose une solution de puzzle — pour un mat en 2 : coup clé validé, réponse adverse jouée automatiquement, puis coup de mat. Avec `game_id` (puzzle publié), le coup validé est joué sur l'échiquier web |
 | `list_puzzles(mate_in)` | Catalogue des puzzles disponibles (filtre 1 ou 2) — ids à passer à `start_puzzle` |
 | `start_puzzle(puzzle_id, name)` | Publie un puzzle en mode **puzzle** (échiquier observable sur le web) pour entraîner l'agent |
-| `analyze_game(game_id, depth)` | Analyse Stockfish d'une partie ou d'un échiquier d'analyse → PGN annoté (en-têtes complets : White/Black/Result/Date) + coups critiques |
+| `analyze_game(game_id, depth)` | Analyse Stockfish d'une partie ou d'un échiquier d'analyse → PGN annoté (en-têtes complets : White/Black/Result/Date) + coups critiques. Si une partie/un puzzle est en cours, l'appel est signalé « triche détectée » (`cheat_detected`) et une alerte s'affiche sous l'échiquier sur le web |
 | `analyze_pgn(pgn, depth)` | Analyse Stockfish d'un PGN externe (ex. exporté de lichess.org) |
 
 ## Installation
@@ -111,7 +112,9 @@ surlignés, promotion gérée), de suivre les coups en temps réel
 (rafraîchissement automatique) et de naviguer dans l'historique coup par coup
 — y compris jusqu'à la **position initiale** (avant le 1er coup). Un bouton
 **Abandonner la partie** est proposé aux joueurs (jamais aux spectateurs), et
-toute fin de partie (abandon, mat, drapeau) **nomme le vainqueur**. Les parties
+toute fin de partie (abandon, mat, drapeau) **nomme le vainqueur**. Si un
+`analyze_game` est lancé pendant qu'une partie ou un puzzle est en cours, une
+alerte **« Triche détectée »** s'affiche sous l'échiquier. Les parties
 sont **partagées avec les outils MCP** : agents et humains jouent dans les
 mêmes parties, chacun son camp.
 
