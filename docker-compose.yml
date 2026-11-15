@@ -2,6 +2,12 @@
 #
 # Prérequis : un nom de domaine pointant vers votre machine (ex. via DDNS)
 # et les ports 80/443 redirigés vers elle sur votre box.
+#
+# `name:` fige le nom de projet compose : quelle que soit la copie du dépôt
+# depuis laquelle on lance compose (dépôt de travail ou DELIVERY/), c'est le
+# MÊME projet qui est géré (conteneurs, volumes caddy_data, ports 80/443).
+
+name: lichess-mcp
 
 services:
   lichess-mcp:

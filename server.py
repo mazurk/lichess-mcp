@@ -375,6 +375,10 @@ def _create_game(white_name: str, black_name: str, level: str,
 
 
 def _is_over(game: dict) -> bool:
+    # Détection centralisée : un drapeau tombé doit être visible de TOUTE
+    # lecture d'état (game_status, get_board, list_games, état web, resign...),
+    # pas seulement des appels qui pensent à appeler _check_flag.
+    _check_flag(game)
     return (game["resigned"] or game["flagged"] is not None
             or game["board"].is_game_over())
 
@@ -944,10 +948,13 @@ def resign(game_id: str, color: str | None = None, player: str | None = None) ->
 
 @mcp.tool()
 def game_status(game_id: str) -> dict:
-    """Statut de la partie : joueurs, trait, numéro de coup, fin éventuelle."""
+    """Statut de la partie : joueurs, trait, numéro de coup, fin éventuelle.
+
+    La chute d'un drapeau est détectée à chaque lecture : `over` bascule dès
+    que le temps du camp au trait est épuisé, avec `result` et `winner`.
+    """
     game = _get_game(game_id)
     board = game["board"]
-    _check_flag(game)  # un drapeau tombé doit apparaître dans le statut
     status = {
         "level": game["level"],
         "move_number": board.fullmove_number,
@@ -962,6 +969,39 @@ def game_status(game_id: str) -> dict:
         if winner:
             status["winner"] = winner
     return status
+
+
+@mcp.tool()
+def get_moves(game_id: str, from_ply: int | None = None) -> dict:
+    """Liste les coups joués d'une partie (ou d'un échiquier d'analyse / puzzle publié).
+
+    Les coups sont renvoyés en SAN (notation standard : « e4 », « Nf3 »,
+    « O-O », « exd5 »...) et en UCI (« e2e4 », « g1f3 »...), dans l'ordre joué.
+    `from_ply` ne renvoie que la fin de la partie : c'est l'index du premier
+    demi-coup renvoyé (0 = depuis le début ; défaut None = tous les coups).
+
+    Args:
+        game_id: identifiant de la partie, de l'échiquier d'analyse ou du puzzle publié.
+        from_ply: index (0-based) du premier demi-coup à renvoyer, ou None pour tout.
+    """
+    game = _get_game(game_id)
+    board = game["board"]
+    moves = list(board.move_stack)
+    sans = _san_history(board)
+    ucis = [mv.uci() for mv in moves]
+    start = 0 if from_ply is None else int(from_ply)
+    if start < 0 or start > len(moves):
+        raise ValueError(
+            f"from_ply doit être entre 0 et {len(moves)} ({len(moves)} demi-coups joués)."
+        )
+    return {
+        "game_id": game_id,
+        "plies": len(moves),
+        "from_ply": start,
+        "count": len(moves) - start,
+        "moves": sans[start:],
+        "uci": ucis[start:],
+    }
 
 
 def _start_puzzle(puzzle: dict) -> dict:

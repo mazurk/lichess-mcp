@@ -53,7 +53,8 @@ format Lichess (FEN + coups UCI).
 | `wait_for_turn(game_id, color, timeout_seconds)` | Long-poll : attend que ce soit le tour du camp `color` — jouer en temps réel sans notification |
 | `undo(game_id)` | Annule le dernier coup (+ réponse du moteur s'il vient de jouer) |
 | `resign(game_id, color, player)` | Abandon pour le camp indiqué (défaut : camp au trait) ou pour le **joueur nommé** (`player`, résolu via les places prises) ; le nom du vainqueur est toujours renvoyé |
-| `game_status(game_id)` | Statut : joueurs, trait, fin éventuelle |
+| `game_status(game_id)` | Statut : joueurs, trait, fin éventuelle — un drapeau tombé est détecté à chaque lecture (`over` bascule, avec `result`/`winner`) |
+| `get_moves(game_id, from_ply)` | Coups joués en SAN (+ UCI), dans l'ordre ; `from_ply` ne renvoie que la fin (index 0-based du 1er demi-coup) |
 | `list_games(kind)` | Liste les parties du serveur sans besoin de l'identifiant (`kind` = `game`, `analysis`, `puzzle` ou None) : id, joueurs, trait, FEN, statut |
 | `next_puzzle()` | Tire un puzzle (mat en 1 ou en 2) |
 | `try_puzzle_move(puzzle_id, move, game_id)` | Propose une solution de puzzle — pour un mat en 2 : coup clé validé, réponse adverse jouée automatiquement, puis coup de mat. Avec `game_id` (puzzle publié), le coup validé est joué sur l'échiquier web |

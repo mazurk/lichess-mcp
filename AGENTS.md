@@ -81,12 +81,14 @@ Après le merge dans `main` :
 3. **Se placer dans `DELIVERY` pour toutes les actions post-merge** — recharger
    le serveur depuis la livraison **sans `down` préalable** : `up -d --build`
    recrée uniquement le conteneur app (image rebuildée), Caddy étant inchangé
-   reste up et les ports 80/443 ne sont jamais libérés. Le `-p lichess-mcp`
-   cible le projet compose existant :
+   reste up et les ports 80/443 ne sont jamais libérés. Le nom de projet est
+   figé (`name: lichess-mcp` dans `docker-compose.yml`) : quel que soit le
+   dossier d'où part la commande (dépôt ou `DELIVERY/`), c'est toujours le
+   même projet qui est géré — aucun `-p` nécessaire, aucun projet parasite :
 
    ```bash
    cd DELIVERY
-   docker compose -p lichess-mcp up -d --build
+   docker compose up -d --build
    # ouvrir Edge sur https://mazurkiewicz1.zapto.org
    ```
 
