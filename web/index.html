@@ -64,6 +64,7 @@
   .badge.analysed { color: #7fb0d8; }
   .badge.spectators { color: #c9b8ff; }
   .badge.browsing { color: #e8a33d; }
+  .badge.puzzle { color: #e8b33d; }
   .badge a { color: #e8a33d; }
   .navbtns { display: flex; gap: 4px; margin-bottom: 6px; }
   .navbtns button { padding: 4px 10px; }
@@ -111,6 +112,7 @@
         <option value="join">Rejoindre</option>
         <option value="analysis">Analyse</option>
         <option value="dryrun">Dry-run</option>
+        <option value="puzzle">Puzzles</option>
       </select>
       <p class="sub" id="modeHint"></p>
 
@@ -178,7 +180,7 @@
       <h1>Coups</h1>
       <div id="gameStatus"></div>
       <div class="navbtns">
-        <button id="btnFirst" title="Premier coup">⏮</button>
+        <button id="btnFirst" title="Position initiale (avant le 1er coup)">⏮</button>
         <button id="btnPrev" title="Coup précédent (←)">◀</button>
         <button id="btnNext" title="Coup suivant (→)">▶</button>
         <button id="btnLast" title="Dernier coup / direct">⏭</button>

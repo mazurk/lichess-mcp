@@ -4,19 +4,21 @@ let state = null, selected = null, pollTimer = null, spectator = false;
 // Navigation dans l'historique : null = position en direct (dernier coup),
 // sinon index du coup affiché (0 = position après le 1er coup).
 let viewPly = null;
-// Mode du cadre « Choix de la partie » : create / join / analysis / dryrun
+// Mode du cadre « Choix de la partie » : create / join / analysis / dryrun / puzzle
 let mode = "create";
 
 const MODE_HINTS = {
   create: "Démarrez une nouvelle partie : contre le moteur, un agent IA ou un humain.",
   join: "Rejoignez une partie en cours ou terminée (non analysée) : joueur ou spectateur.",
   analysis: "Ouvrez une partie terminée et analysée pour le debrief (consultation).",
-  dryrun: "Consultez un échiquier d'analyse (dry-run) créé par l'agent.",
+  dryrun: "Consultez un échiquier d'analyse (dry-run) créé par l'agent (spectateur).",
+  puzzle: "Consultez les puzzles publiés par l'agent (mode puzzle) : position, coups joués et progression (spectateur).",
 };
 const MODE_LABELS = {
   join: "Rejoindre",
   analysis: "Analyser",
   dryrun: "Consulter",
+  puzzle: "Consulter",
 };
 
 const statusEl = document.getElementById("status");
@@ -91,7 +93,7 @@ async function joinGame() {
       spectator = true;
       state = await api("/web/api/games/" + encodeURIComponent(game_id) + "?your_color=" + viewColor,
         {method: "GET"});
-    } else if (mode === "dryrun") {
+    } else if (mode === "dryrun" || mode === "puzzle") {
       // Consultation d'un échiquier d'analyse : spectateur uniquement.
       spectator = true;
       state = await api("/web/api/games/" + encodeURIComponent(game_id), {method: "GET"});
@@ -178,7 +180,8 @@ function isLive() {
   // En direct si aucune navigation, ou position du dernier coup atteinte.
   if (viewPly === null) return true;
   const hist = state && state.history ? state.history : [];
-  return viewPly >= hist.length - 1;
+  // viewPly = nombre de coups joués dans la vue (0 = position de départ)
+  return viewPly >= hist.length;
 }
 
 function render() {
@@ -191,9 +194,11 @@ function render() {
   // Position affichée : historique navigué ou position en direct.
   const hist = state.history || [];
   let grid, lastMove, legal;
-  if (viewPly !== null && viewPly < hist.length - 1) {
-    grid = fenToGrid(hist[viewPly].fen);
-    lastMove = hist[viewPly].uci;
+  if (viewPly !== null && viewPly < hist.length) {
+    // 0 = position de départ (FEN racine, avant le premier coup)
+    grid = viewPly === 0 ? fenToGrid(state.start_fen)
+      : fenToGrid(hist[viewPly - 1].fen);
+    lastMove = viewPly > 0 ? hist[viewPly - 1].uci : null;
     legal = [];
   } else {
     grid = state.board;
@@ -258,7 +263,7 @@ function renderMoves() {
     movesEl.innerHTML = "<i>Aucun coup joué.</i>";
     return;
   }
-  const current = (viewPly === null || isLive()) ? state.moves.length - 1 : viewPly;
+  const current = (viewPly === null || isLive()) ? state.moves.length - 1 : viewPly - 1;
   const moveHtml = (i) => {
     const m = state.moves[i];
     const inf = moveInfo(i);
@@ -281,24 +286,25 @@ function renderMoves() {
   }
   movesEl.innerHTML = html;
   movesEl.querySelectorAll(".mv").forEach((el) => {
-    el.onclick = () => setView(Number(el.dataset.ply));
+    el.onclick = () => setView(Number(el.dataset.ply) + 1);
   });
 }
 
 function setView(ply) {
-  // Navigation dans l'historique ; le dernier coup revient en direct.
+  // Navigation dans l'historique ; ply = nombre de coups joués dans la vue
+  // (0 = position de départ) ; le dernier coup revient en direct.
   const hist = state.history || [];
-  if (ply === null || ply >= hist.length - 1) {
+  if (ply === null || ply >= hist.length) {
     viewPly = null;
   } else {
-    viewPly = Math.max(0, Math.min(ply, hist.length - 1));
+    viewPly = Math.max(0, Math.min(ply, hist.length));
   }
   selected = null;
   render();
 }
 
 function navFirst() { if (state && state.history && state.history.length) setView(0); }
-function navPrev() { if (state && state.history && state.history.length) setView((viewPly === null ? state.history.length - 1 : viewPly) - 1); }
+function navPrev() { if (state && state.history && state.history.length) setView((viewPly === null ? state.history.length : viewPly) - 1); }
 function navNext() { if (state && state.history && state.history.length) setView(viewPly === null ? null : viewPly + 1); }
 function navLast() { setView(null); }
 
@@ -333,8 +339,8 @@ function browsingClockMs(color) {
   // En relecture : temps restant d'un camp au pli consulté = son dernier
   // relevé d'horloge parmi les coups 0..viewPly (sinon le temps de base).
   const hist = state.history || [];
-  const upto = (viewPly === null) ? hist.length - 1 : viewPly;
-  for (let i = upto; i >= 0; i--) {
+  const upto = (viewPly === null) ? hist.length : viewPly;
+  for (let i = upto - 1; i >= 0; i--) {
     const c = hist[i] && hist[i].clock;
     if (c && c.color === color) return c.remaining_ms;
   }
@@ -370,13 +376,18 @@ function renderGameStatus() {
   if (state.analysed && state.analysis) {
     html += ' <span class="badge analysed">analysée (prof. ' + state.analysis.depth + ")</span>";
   }
+  if (state.puzzle) {
+    html += ' <span class="badge puzzle">puzzle ' + escapeHtml(state.puzzle.puzzle_id)
+      + " · " + state.puzzle.plies_done + "/" + state.puzzle.total_plies
+      + (state.puzzle.solved ? " · résolu ✓" : "") + "</span>";
+  }
   if (state.spectators > 0) {
     html += ' <span class="badge spectators">👁 ' + state.spectators
       + (state.spectators > 1 ? " spectateurs" : " spectateur") + "</span>";
   }
   if (viewPly !== null && !isLive()) {
     html += ' <span class="badge browsing">relecture : coup '
-      + (viewPly + 1) + "/" + state.history.length
+      + viewPly + "/" + state.history.length
       + ' — <a href="#" id="backLive">retour au direct</a></span>';
   }
   el.innerHTML = html;
@@ -561,6 +572,10 @@ function filterGamesForMode(games) {
   if (mode === "dryrun") {
     return games.filter(g => g.kind === "analysis");
   }
+  if (mode === "puzzle") {
+    // puzzles publiés par l'agent (consultation/spectateur)
+    return games.filter(g => g.kind === "puzzle");
+  }
   return games;
 }
 
@@ -576,6 +591,7 @@ async function refreshGameList() {
     opt.value = "";
     opt.textContent = mode === "dryrun" ? "Aucun échiquier d'analyse sur le serveur"
       : mode === "analysis" ? "Aucune partie analysée à consulter"
+      : mode === "puzzle" ? "Aucun puzzle publié sur le serveur"
       : "Aucune partie sur le serveur";
     select.appendChild(opt);
     return;
@@ -584,9 +600,16 @@ async function refreshGameList() {
     const opt = document.createElement("option");
     opt.value = g.game_id;
     const ongoingAnalysed = g.analysed && g.status === "en cours";
-    const label = g.game_id + " — " + g.white_name + " vs " + g.black_name
+    const who = (g.kind === "analysis" || g.kind === "puzzle") && g.name
+      ? g.name : g.white_name + " vs " + g.black_name;
+    let label = g.game_id + " — " + who
       + " · " + g.plies + " coups · " + g.status
       + (g.analysed ? (ongoingAnalysed ? " · ANALYSÉE en cours !" : " · analysée") : "");
+    if (g.puzzle) {
+      label += " · puzzle " + g.puzzle.puzzle_id
+        + " " + g.puzzle.plies_done + "/" + g.puzzle.total_plies
+        + (g.puzzle.solved ? " ✓" : "");
+    }
     opt.textContent = label;
     if (ongoingAnalysed) opt.style.color = "#d34f5a";
     select.appendChild(opt);

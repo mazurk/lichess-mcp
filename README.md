@@ -27,7 +27,12 @@ format Lichess (FEN + coups UCI).
   coups gaffés colorés pour le debrief.
 - **Règles complètes** gérées par [python-chess](https://github.com/niklasf/python-chess) :
   promotion, prise en passant, roc, pat, règle des 50 coups, répétition triple.
-- **Puzzles** au format Lichess : mats en un coup à résoudre via l'agent.
+- **Puzzles** au format Lichess : mats en un ou deux coups à résoudre via
+  l'agent (`next_puzzle`/`try_puzzle_move`), ou **publiés en mode puzzle**
+  (`start_puzzle`) : l'échiquier est matérialisé sur le serveur, l'agent
+  s'entraîne avec `try_puzzle_move(..., game_id=...)` (chaque coup validé
+  apparaît en temps réel) et vous consultez la résolution sur l'interface web
+  (mode **Puzzles**, avec la progression du puzzle).
 - **Interface web** : plateau interactif dans le navigateur
   (`http://localhost:8000/`) — jouez à la souris, rejoignez une partie par son
   identifiant, ou regardez en **mode spectateur**. Rendu façon Lichess :
@@ -51,7 +56,9 @@ format Lichess (FEN + coups UCI).
 | `game_status(game_id)` | Statut : joueurs, trait, fin éventuelle |
 | `list_games(kind)` | Liste les parties du serveur sans besoin de l'identifiant (`kind` = `game`, `analysis`, `puzzle` ou None) : id, joueurs, trait, FEN, statut |
 | `next_puzzle()` | Tire un puzzle (mat en 1 ou en 2) |
-| `try_puzzle_move(puzzle_id, move)` | Propose une solution de puzzle — pour un mat en 2 : coup clé validé, réponse adverse jouée automatiquement, puis coup de mat |
+| `try_puzzle_move(puzzle_id, move, game_id)` | Propose une solution de puzzle — pour un mat en 2 : coup clé validé, réponse adverse jouée automatiquement, puis coup de mat. Avec `game_id` (puzzle publié), le coup validé est joué sur l'échiquier web |
+| `list_puzzles(mate_in)` | Catalogue des puzzles disponibles (filtre 1 ou 2) — ids à passer à `start_puzzle` |
+| `start_puzzle(puzzle_id, name)` | Publie un puzzle en mode **puzzle** (échiquier observable sur le web) pour entraîner l'agent |
 | `analyze_game(game_id, depth)` | Analyse Stockfish d'une partie ou d'un échiquier d'analyse → PGN annoté + coups critiques |
 | `analyze_pgn(pgn, depth)` | Analyse Stockfish d'un PGN externe (ex. exporté de lichess.org) |
 
@@ -96,11 +103,14 @@ https://votre-domaine/              # idem derrière Caddy (déploiement public)
 
 La page permet de créer une partie (contre le moteur ou partie libre, avec
 les noms des joueurs), de la rejoindre par son identifiant — ou de la regarder
-en **mode spectateur** (case à cocher) —, de jouer à la souris (coups légaux
+en **mode spectateur** (case à cocher) —, de consulter les parties analysées
+(mode **Analyse**), les échiquiers d'analyse dry-run (mode **Dry-run**) et les
+puzzles publiés (mode **Puzzles**), de jouer à la souris (coups légaux
 surlignés, promotion gérée), de suivre les coups en temps réel
-(rafraîchissement automatique) et de voir l'historique. Les parties sont
-**partagées avec les outils MCP** : agents et humains jouent dans les mêmes
-parties, chacun son camp.
+(rafraîchissement automatique) et de naviguer dans l'historique coup par coup
+— y compris jusqu'à la **position initiale** (avant le 1er coup). Les parties
+sont **partagées avec les outils MCP** : agents et humains jouent dans les
+mêmes parties, chacun son camp.
 
 Si un `LICHESS_MCP_AUTH_TOKEN` est configuré, l'API web l'exige aussi ; la page
 demande le token une fois et le mémorise localement.
