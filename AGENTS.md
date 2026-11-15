@@ -102,3 +102,15 @@ Après le merge dans `main` :
 Vérifier que le site répond (HTTPS 200) et faire un smoke test rapide si pertinent.
 Le serveur n'est donc indisponible que quelques secondes (recréation du
 conteneur app), jamais pendant le travail dans le dépôt principal.
+
+## 7. Nettoyage après smoke test — règle absolue
+
+Après un smoke test sur le serveur déployé, **ne supprimer QUE les parties que
+j'ai moi-même créées pendant ce test** : je note les `game_id` renvoyés par mes
+propres appels (`new_game`, `new_analysis_board`, `start_puzzle`, endpoints web
+de création) et je ne fais `delete_game` que sur ces ids-là.
+
+**Jamais** de boucle `list_games` + `delete_game` sur tout le serveur : les
+parties/puzzles des utilisateurs (créés hors de ma session de test) doivent
+rester intacts. Une partie est « à moi » uniquement si je l'ai créée dans la
+session de test en cours.
