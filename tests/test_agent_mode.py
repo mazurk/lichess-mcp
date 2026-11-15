@@ -322,3 +322,25 @@ def test_analyze_pgn_with_fen_header():
     assert r["evals"][0]["san"] == "Ra8#"
     assert r["evals"][0]["eval_white"] >= 90000  # mat
     assert "6k1" in r["pgn"]  # le FEN de départ est dans le PGN annoté
+
+
+def test_list_games_tool():
+    """L'agent peut lister les parties du serveur (id, statut, camp libres)."""
+    server.GAMES.clear()
+    gid1 = server.new_game(white="A", black="B")["game_id"]
+    gid2 = server.new_game(white="C", engine_color="black", clock="10+0")["game_id"]
+    result = server.list_games()
+    assert result["count"] == 2
+    ids = [g["game_id"] for g in result["games"]]
+    assert ids == sorted([gid1, gid2])
+    g2 = next(g for g in result["games"] if g["game_id"] == gid2)
+    assert g2["status"] == "en cours"
+    assert g2["kind"] == "game"
+    assert g2["engine_color"] == "black"
+    assert g2["plies"] == 0
+    assert g2["white_seat"] is None
+    assert g2["analysed"] is False
+    # une partie terminée est signalée
+    server.resign(gid1, "white")
+    g1 = next(g for g in server.list_games()["games"] if g["game_id"] == gid1)
+    assert g1["status"] == "terminée"

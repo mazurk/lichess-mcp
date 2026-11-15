@@ -367,6 +367,37 @@ def new_analysis_board(fen: str | None = None) -> dict:
 
 
 @mcp.tool()
+def list_games() -> dict:
+    """Liste toutes les parties présentes sur le serveur.
+
+    Pour chaque partie : son identifiant (à passer à join_game / get_board /
+    play_move), les noms des joueurs, le camp joué par le moteur, le type
+    ("game" = partie, "analysis" = échiquier d'analyse/dry-run), le nombre
+    de coups, le statut ("en cours" / "terminée"), si elle a été analysée
+    et les camp libres/rejoignables. Utile pour découvrir les parties avant
+    de les rejoindre ou les analyser.
+    """
+    games = []
+    for game_id, game in GAMES.items():
+        board = game["board"]
+        analysis = game.get("analysis")
+        games.append({
+            "game_id": game_id,
+            "white_name": game["white_name"],
+            "black_name": game["black_name"],
+            "engine_color": game["engine_color"],
+            "kind": game["kind"],
+            "plies": len(board.move_stack),
+            "status": _game_status(game),
+            "analysed": analysis is not None,
+            "analysis_depth": analysis["depth"] if analysis else None,
+            **_seat_info(game),
+        })
+    games.sort(key=lambda g: g["game_id"])
+    return {"games": games, "count": len(games)}
+
+
+@mcp.tool()
 def join_game(game_id: str, player: str, color: str | None = None,
               spectate: bool = False) -> dict:
     """Rejoint une partie en occupant un camp (premier arrivé, premier servi),
