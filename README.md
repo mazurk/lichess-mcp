@@ -68,7 +68,7 @@ format Lichess (FEN + coups UCI).
 | `try_puzzle_move(puzzle_id, move, game_id)` | Propose une solution de puzzle — pour un mat en 2 : coup clé validé, réponse adverse jouée automatiquement, puis coup de mat. Avec `game_id` (puzzle publié), le coup validé est joué sur l'échiquier web |
 | `list_puzzles(mate_in)` | Catalogue des puzzles disponibles (filtre 1 ou 2) — ids à passer à `start_puzzle` |
 | `start_puzzle(puzzle_id, name)` | Publie un puzzle en mode **puzzle** (échiquier observable sur le web) pour entraîner l'agent |
-| `analyze_game(game_id, depth)` | Analyse Stockfish d'une partie ou d'un échiquier d'analyse → PGN annoté (en-têtes complets : White/Black/Result/Date) + coups critiques. Si une partie/un puzzle est en cours, l'appel est signalé « triche détectée » (`cheat_detected`) et une alerte s'affiche sous l'échiquier sur le web |
+| `analyze_game(game_id, depth)` | Analyse Stockfish d'une partie ou d'un échiquier d'analyse → PGN annoté (en-têtes complets : White/Black/Result/Date) + coups critiques. Si une partie/un puzzle est en cours, l'appel est signalé « triche détectée » (`cheat_detected`, alerte sous l'échiquier sur le web) — sauf si l'échiquier avait déjà été analysé avant le début de la partie |
 | `analyze_pgn(pgn, depth)` | Analyse Stockfish d'un PGN externe (ex. exporté de lichess.org) |
 
 ## Installation

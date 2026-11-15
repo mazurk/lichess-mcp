@@ -103,6 +103,8 @@ def _game_to_json(game_id: str, game: dict) -> dict:
         "flagged": game["flagged"],
         "move_clocks": game["move_clocks"],
         "analysis": game.get("analysis"),
+        "created_at": game.get("created_at"),
+        "last_analysis_at": game.get("last_analysis_at"),
         "puzzle_id": (puzzle or {}).get("puzzle", {}).get("PuzzleId"),
         "puzzle_plies_done": (puzzle or {}).get("plies_done"),
     }
@@ -132,6 +134,8 @@ def _game_from_json(data: dict) -> tuple[str, dict]:
         "turn_started_at": data.get("turn_started_at"),
         "flagged": data.get("flagged"),
         "move_clocks": data.get("move_clocks", []),
+        "created_at": data.get("created_at") or time.time(),
+        "last_analysis_at": data.get("last_analysis_at"),
     }
     puzzle_id = data.get("puzzle_id")
     if puzzle_id:
@@ -519,6 +523,8 @@ def _create_game(white_name: str, black_name: str, level: str,
         "turn_started_at": None if clock_cfg else time.time(),
         "flagged": None,  # camp qui a perdu au temps
         "move_clocks": [],  # temps consommé par coup (debrief)
+        "created_at": time.time(),  # début de la partie (référence anti-triche)
+        "last_analysis_at": None,  # horodatage de la dernière analyze_game sur cet échiquier
     }
     _maybe_start_clock(game)
     game_id = uuid.uuid4().hex[:8]
@@ -1409,11 +1415,23 @@ def try_puzzle_move(puzzle_id: str, move: str,
 def _note_cheat(analyzed_id: str) -> dict | None:
     """Enregistre une alerte « triche détectée » si un analyze_game est lancé
     alors qu'une partie ou un puzzle est en cours — quel que soit l'échiquier
-    analysé (même un id différent de la partie en cours)."""
+    analysé (même un id différent de la partie en cours).
+
+    Exception : si l'échiquier analysé avait DÉJÀ été analysé avant le début
+    de la partie en cours, il n'y a pas eu de triche (l'analyse préexistait)
+    → aucune alerte.
+    """
     in_progress = [gid for gid, g in GAMES.items()
                    if g["kind"] in ("game", "puzzle") and not _is_over(g)]
     if not in_progress:
         return None
+    analyzed = GAMES.get(analyzed_id)
+    if analyzed is not None:
+        last_at = analyzed.get("last_analysis_at")
+        if last_at is not None:
+            game_started = min(GAMES[gid].get("created_at") or 0.0 for gid in in_progress)
+            if last_at < game_started:
+                return None  # analyse déjà faite avant le début de la partie
     alert = {
         "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "analyzed": analyzed_id,
@@ -1439,7 +1457,9 @@ def analyze_game(game_id: str, depth: int = 15, publish: bool = True) -> dict:
     **Alerte anti-triche** : si une partie ou un puzzle est en cours au moment
     de l'appel (quel que soit l'échiquier analysé), l'appel est enregistré
     comme « triche détectée » (`cheat_detected` dans le résultat) et une
-    alerte est affichée sous l'échiquier sur l'interface web.
+    alerte « Triche détectée » est affichée sous l'échiquier sur l'interface
+    web. Exception : si l'échiquier avait déjà été analysé avant le début de
+    la partie en cours, aucune alerte (l'analyse préexistait, pas de triche).
 
     Args:
         game_id: identifiant de la partie ou de l'échiquier d'analyse.
@@ -1462,8 +1482,10 @@ def analyze_game(game_id: str, depth: int = 15, publish: bool = True) -> dict:
     result["cheat_detected"] = cheat_alert is not None
     if cheat_alert is not None:
         result["cheat_alert"] = cheat_alert
+    game["last_analysis_at"] = time.time()
     if publish:
-        game["analysis"] = {"depth": depth, "evals": result["evals"]}
+        game["analysis"] = {"depth": depth, "evals": result["evals"],
+                            "at": game["last_analysis_at"]}
         result["published"] = True
     _persist()
     return result

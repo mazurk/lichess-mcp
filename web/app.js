@@ -156,13 +156,9 @@ function afterState() {
   // échiquier) est remonté ici.
   const cheatEl = document.getElementById("cheatAlert");
   if (cheatEl) {
-    const alerts = state.cheat_alerts || [];
-    if (state.cheat_detected && alerts.length) {
-      const last = alerts[alerts.length - 1];
+    if (state.cheat_detected) {
       cheatEl.style.display = "block";
-      cheatEl.textContent = "Triche détectée : analyze_game appelé pendant une partie en cours ("
-        + alerts.length + " alerte" + (alerts.length > 1 ? "s" : "")
-        + (last && last.analyzed ? ", dernier échiquier analysé : " + last.analyzed : "") + ")";
+      cheatEl.textContent = "Triche détectée";
     } else {
       cheatEl.style.display = "none";
     }
