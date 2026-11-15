@@ -77,10 +77,13 @@ Après le merge dans `main` :
    sans `.git`, `.venv`, caches ni notes non commitées :
 
    ```bash
-   rsync -a --exclude .git --exclude .venv --exclude DELIVERY \
+   rsync -a --exclude .git --exclude .venv --exclude DELIVERY --exclude data \
      --exclude __pycache__ --exclude .pytest_cache --exclude .ruff_cache \
      --exclude node_modules --exclude prompt.txt ./ DELIVERY/
    ```
+
+   (`data/` = état persisté des parties, hors git ; en production il vit dans
+   le volume Docker `games_data`, pas dans le dossier.)
 
 3. **Se placer dans `DELIVERY` pour toutes les actions post-merge** — recharger
    le serveur depuis la livraison **sans `down` préalable** : `up -d --build`

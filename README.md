@@ -39,6 +39,13 @@ format Lichess (FEN + coups UCI).
   **pièces SVG Cburnett** (celles de lichess.org, embarquées, 100 % hors
   ligne) et couleurs du plateau officiel.
 - **Historique** : annulation d'un coup (+ réponse du moteur), abandon par camp, statut.
+- **Parties persistantes** : l'état du serveur (parties, échiquiers d'analyse,
+  puzzles publiés, sessions `next_puzzle`, alertes triche) est écrit en JSON à
+  chaque mutation dans `data/server_state.json` et rechargé au démarrage :
+  **les parties survivent à un redémarrage du serveur**. En Docker, `data/`
+  est monté sur le volume nommé `games_data`. L'horloge est gelée pendant
+  l'arrêt du serveur (le temps du redémarrage ne compte pas). Chemin
+  surchargeable via `LICHESS_MCP_STATE_FILE`. Nettoyage : `delete_game`.
 
 ## Outils MCP exposés
 

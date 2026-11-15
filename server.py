@@ -14,6 +14,7 @@ import json
 import os
 import random
 import re
+import sys
 import time
 import uuid
 from pathlib import Path
@@ -60,6 +61,153 @@ ACTIVE_PUZZLES: dict[str, dict] = {}
 # qu'une partie ou un puzzle est en cours y est enregistré (alerte globale,
 # quel que soit l'échiquier analysé) et affiché sur l'interface web.
 CHEAT_ALERTS: list[dict] = []
+
+
+# ---------------------------------------------------------------------------
+# Persistance : les parties survivent à un redémarrage du serveur.
+# L'état (parties, sessions de puzzle, alertes triche) est écrit en JSON —
+# FEN racine + coups UCI + métadonnées — dans `data/server_state.json`
+# (volume Docker `games_data` en production). Chemin surchargeable via
+# LICHESS_MCP_STATE_FILE (les tests l'isolent dans un fichier temporaire).
+
+
+def _state_path() -> Path:
+    env = os.environ.get("LICHESS_MCP_STATE_FILE", "").strip()
+    if env:
+        return Path(env)
+    return Path(__file__).parent / "data" / "server_state.json"
+
+
+def _game_to_json(game_id: str, game: dict) -> dict:
+    board = game["board"]
+    puzzle = game.get("puzzle")
+    return {
+        "game_id": game_id,
+        "root_fen": board.root().fen(),
+        "moves": [m.uci() for m in board.move_stack],
+        "white_name": game["white_name"],
+        "black_name": game["black_name"],
+        "name": game["name"],
+        "engine_color": game["engine_color"],
+        "level": game["level"],
+        "resigned": game["resigned"],
+        "resigned_by": game["resigned_by"],
+        "kind": game["kind"],
+        "white_seat": game["white_seat"],
+        "black_seat": game["black_seat"],
+        "spectators": sorted(game["spectators"]),
+        "clock_cfg": game["clock_cfg"],
+        "clock_ms": game["clock_ms"],
+        "clock_started": game["clock_started"],
+        "turn_started_at": game["turn_started_at"],
+        "flagged": game["flagged"],
+        "move_clocks": game["move_clocks"],
+        "analysis": game.get("analysis"),
+        "puzzle_id": (puzzle or {}).get("puzzle", {}).get("PuzzleId"),
+        "puzzle_plies_done": (puzzle or {}).get("plies_done"),
+    }
+
+
+def _game_from_json(data: dict) -> tuple[str, dict]:
+    board = chess.Board(data["root_fen"])
+    for uci in data["moves"]:
+        board.push(chess.Move.from_uci(uci))
+    game = {
+        "board": board,
+        "white_name": data["white_name"],
+        "black_name": data["black_name"],
+        "name": data.get("name"),
+        "engine_color": data["engine_color"],
+        "level": data["level"],
+        "engine": Engine(data["level"]) if data["engine_color"] else None,
+        "resigned": data["resigned"],
+        "resigned_by": data.get("resigned_by"),
+        "kind": data["kind"],
+        "white_seat": data.get("white_seat"),
+        "black_seat": data.get("black_seat"),
+        "spectators": {name: True for name in data.get("spectators", [])},
+        "clock_cfg": data.get("clock_cfg"),
+        "clock_ms": data.get("clock_ms"),
+        "clock_started": data.get("clock_started", False),
+        "turn_started_at": data.get("turn_started_at"),
+        "flagged": data.get("flagged"),
+        "move_clocks": data.get("move_clocks", []),
+    }
+    puzzle_id = data.get("puzzle_id")
+    if puzzle_id:
+        puzzle = next((p for p in PUZZLES if p["PuzzleId"] == puzzle_id), None)
+        if puzzle is not None:
+            game["puzzle"] = {"puzzle": puzzle, "board": board,
+                              "plies_done": data.get("puzzle_plies_done", 0)}
+    return data["game_id"], game
+
+
+def _persist() -> None:
+    """Écrit l'état du serveur en JSON de façon atomique (tmp + os.replace)."""
+    path = _state_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    state = {
+        "version": 1,
+        "saved_at": time.time(),
+        "games": [_game_to_json(gid, g) for gid, g in GAMES.items()],
+        "puzzle_sessions": [
+            {
+                "puzzle_id": s["puzzle"]["PuzzleId"],
+                "root_fen": s["board"].root().fen(),
+                "moves": [m.uci() for m in s["board"].move_stack],
+                "plies_done": s["plies_done"],
+            }
+            for s in ACTIVE_PUZZLES.values()
+            if "puzzle" in s
+        ],
+        "cheat_alerts": CHEAT_ALERTS,
+    }
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(json.dumps(state), encoding="utf-8")
+    os.replace(tmp, path)
+
+
+def _load_state() -> None:
+    """Recharge l'état persisté au démarrage (no-op si aucun fichier).
+
+    L'horloge est « gelée » pendant l'arrêt du serveur : le temps écoulé entre
+    la sauvegarde et le redémarrage est rajouté à `turn_started_at`, pour que
+    les joueurs ne perdent pas de temps à cause du redémarrage.
+    """
+    path = _state_path()
+    if not path.is_file():
+        return
+    try:
+        state = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        print(f"lichess-mcp: état persisté illisible ({path}) : {exc} — démarrage à vide",
+              file=sys.stderr)
+        return
+    downtime = max(0.0, time.time() - float(state.get("saved_at") or time.time()))
+    for g in state.get("games", []):
+        try:
+            gid, game = _game_from_json(g)
+            if game["clock_started"] and game["turn_started_at"] is not None:
+                game["turn_started_at"] += downtime  # horloge gelée pendant l'arrêt
+            GAMES[gid] = game
+        except Exception as exc:  # noqa: BLE001 — une partie corrompue ne bloque pas le démarrage
+            print(f"lichess-mcp: partie {g.get('game_id')} non restaurée : {exc}", file=sys.stderr)
+    for s in state.get("puzzle_sessions", []):
+        try:
+            puzzle = next(p for p in PUZZLES if p["PuzzleId"] == s["puzzle_id"])
+            board = chess.Board(s["root_fen"])
+            for uci in s["moves"]:
+                board.push(chess.Move.from_uci(uci))
+            ACTIVE_PUZZLES[s["puzzle_id"]] = {
+                "puzzle": puzzle, "board": board, "plies_done": s["plies_done"],
+            }
+        except Exception as exc:  # noqa: BLE001
+            print(f"lichess-mcp: session puzzle {s.get('puzzle_id')} non restaurée : {exc}",
+                  file=sys.stderr)
+    CHEAT_ALERTS.extend(state.get("cheat_alerts", []))
+
+
+_load_state()
 
 
 def _board_str(board: chess.Board) -> str:
@@ -375,6 +523,7 @@ def _create_game(white_name: str, black_name: str, level: str,
     _maybe_start_clock(game)
     game_id = uuid.uuid4().hex[:8]
     GAMES[game_id] = game
+    _persist()
     return game_id
 
 
@@ -630,6 +779,7 @@ def join_game(game_id: str, player: str, color: str | None = None,
 
     if spectate:
         game["spectators"][player] = True
+        _persist()
         return {
             "game_id": game_id,
             "you_are": "spectator",
@@ -675,6 +825,7 @@ def join_game(game_id: str, player: str, color: str | None = None,
     game[f"{color}_seat"] = player
     game[f"{color}_name"] = player
     _maybe_start_clock(game)  # l'horloge démarre quand les deux camps sont couverts
+    _persist()
     return {
         "game_id": game_id,
         "your_color": color,
@@ -841,6 +992,7 @@ def play_move(game_id: str, move: str, color: str | None = None,
         winner = _winner(game)
         if winner:
             result["winner"] = winner
+    _persist()
     return result
 
 
@@ -906,6 +1058,7 @@ def undo(game_id: str) -> dict:
     for _ in range(2 if game["engine_color"] else 1):
         if board.move_stack:
             board.pop()
+    _persist()
     return {
         "board": _board_str(board),
         "fen": board.fen(),
@@ -947,6 +1100,7 @@ def resign(game_id: str, color: str | None = None, player: str | None = None) ->
     winner = _winner(game)
     if winner:
         result["winner"] = winner
+    _persist()
     return result
 
 
@@ -1028,6 +1182,7 @@ def delete_game(game_id: str) -> dict:
     del GAMES[game_id]
     if puzzle_id:
         ACTIVE_PUZZLES.pop(puzzle_id, None)
+    _persist()
     return {
         "deleted": game_id,
         "kind": kind,
@@ -1045,6 +1200,7 @@ def _start_puzzle(puzzle: dict) -> dict:
         "plies_done": 0,
     }
     ACTIVE_PUZZLES[puzzle["PuzzleId"]] = session
+    _persist()
     return session
 
 
@@ -1230,6 +1386,7 @@ def try_puzzle_move(puzzle_id: str, move: str,
         board.push(reply)
         plies_done += 1
         session["plies_done"] = plies_done
+        _persist()
         return {
             "correct": True,
             "note": f"{san} ! L'adversaire répond {reply_san}. Trouvez le mat.",
@@ -1241,6 +1398,7 @@ def try_puzzle_move(puzzle_id: str, move: str,
     session["plies_done"] = plies_done
     session["solved"] = True
     mate_in = puzzle.get("MateIn", 1)
+    _persist()
     return {
         "correct": True,
         "solved": True,
@@ -1307,6 +1465,7 @@ def analyze_game(game_id: str, depth: int = 15, publish: bool = True) -> dict:
     if publish:
         game["analysis"] = {"depth": depth, "evals": result["evals"]}
         result["published"] = True
+    _persist()
     return result
 
 
@@ -1638,6 +1797,7 @@ async def web_new_game(request: Request) -> JSONResponse:
     _maybe_start_clock(game)
     if engine_color == "white":
         await run_in_threadpool(_engine_reply, game)
+    _persist()
     return JSONResponse(_web_state(game_id, game, your_color))
 
 
@@ -1739,6 +1899,7 @@ async def web_play_move(request: Request) -> JSONResponse:
     _apply_clock_move(game, your_color)
     if game["engine_color"] and not board.is_game_over():
         await run_in_threadpool(_engine_reply, game)
+    _persist()
     return JSONResponse(_web_state(game_id, game, your_color))
 
 
@@ -1770,6 +1931,7 @@ async def web_resign_game(request: Request) -> JSONResponse:
         )
     game["resigned"] = True
     game["resigned_by"] = your_color
+    _persist()
     return JSONResponse(_web_state(game_id, game, your_color))
 
 

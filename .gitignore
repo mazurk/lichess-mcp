@@ -6,3 +6,4 @@ venv/
 Caddyfile
 node_modules/
 DELIVERY/
+data/
