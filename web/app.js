@@ -11,7 +11,7 @@ const MODE_HINTS = {
   create: "Démarrez une nouvelle partie : contre le moteur, un agent IA ou un humain.",
   join: "Rejoignez une partie en cours ou terminée (non analysée) : joueur ou spectateur.",
   analysis: "Ouvrez une partie terminée et analysée pour le debrief (consultation).",
-  dryrun: "Consultez un échiquier d'analyse (dry-run) créé par l'agent.",
+  dryrun: "Consultez un échiquier d'analyse (dry-run) ou un puzzle publié par l'agent (spectateur).",
 };
 const MODE_LABELS = {
   join: "Rejoindre",
@@ -559,7 +559,8 @@ function filterGamesForMode(games) {
     return games.filter(g => g.kind === "game" && g.analysed && g.status === "terminée");
   }
   if (mode === "dryrun") {
-    return games.filter(g => g.kind === "analysis");
+    // échiquiers d'analyse + puzzles publiés (consultation/spectateur)
+    return games.filter(g => g.kind === "analysis" || g.kind === "puzzle");
   }
   return games;
 }
@@ -574,7 +575,7 @@ async function refreshGameList() {
   if (!games.length) {
     const opt = document.createElement("option");
     opt.value = "";
-    opt.textContent = mode === "dryrun" ? "Aucun échiquier d'analyse sur le serveur"
+    opt.textContent = mode === "dryrun" ? "Aucun échiquier d'analyse ni puzzle sur le serveur"
       : mode === "analysis" ? "Aucune partie analysée à consulter"
       : "Aucune partie sur le serveur";
     select.appendChild(opt);
@@ -584,7 +585,9 @@ async function refreshGameList() {
     const opt = document.createElement("option");
     opt.value = g.game_id;
     const ongoingAnalysed = g.analysed && g.status === "en cours";
-    const label = g.game_id + " — " + g.white_name + " vs " + g.black_name
+    const who = (g.kind === "analysis" || g.kind === "puzzle") && g.name
+      ? g.name : g.white_name + " vs " + g.black_name;
+    const label = g.game_id + " — " + who
       + " · " + g.plies + " coups · " + g.status
       + (g.analysed ? (ongoingAnalysed ? " · ANALYSÉE en cours !" : " · analysée") : "");
     opt.textContent = label;

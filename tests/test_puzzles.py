@@ -137,3 +137,55 @@ def test_random_puzzle_flow_smoke():
             assert step["correct"] is True
             final = server.try_puzzle_move(pid, line[2])
         assert final["correct"] is True
+
+
+def test_analysis_board_nameable():
+    """Un échiquier d'analyse peut être nommé et apparaît dans la liste web."""
+    server.GAMES.clear()
+    r = server.new_analysis_board(name="Ouverture française")
+    assert r["name"] == "Ouverture française"
+    game = server.GAMES[r["game_id"]]
+    assert game["name"] == "Ouverture française"
+    # sans nom : champ null
+    r2 = server.new_analysis_board()
+    assert server.GAMES[r2["game_id"]]["name"] is None
+
+
+def test_start_puzzle_publishes_observable_board():
+    """start_puzzle : le puzzle est visible sur le serveur (mode Consulter)."""
+    server.GAMES.clear()
+    puzzle = server.PUZZLES[0]
+    r = server.start_puzzle(puzzle_id=puzzle["PuzzleId"], name="Puzzle du jour")
+    gid = r["game_id"]
+    game = server.GAMES[gid]
+    assert game["kind"] == "puzzle"
+    assert game["name"] == "Puzzle du jour"
+    assert r["puzzle_id"] == puzzle["PuzzleId"]
+    # la position publiée est bien celle du puzzle
+    assert game["board"].fen() == puzzle["FEN"]
+    # consultable comme spectateur (comme les échiquiers d'analyse)
+    joined = server.join_game(gid, "observateur", spectate=True)
+    assert joined["you_are"] == "spectator"
+
+
+def test_try_puzzle_move_on_published_board():
+    """Les coups validés d'un puzzle publié sont rejoués sur l'échiquier web."""
+    puzzle = server.PUZZLES[0]
+    r = server.start_puzzle(puzzle_id=puzzle["PuzzleId"])
+    gid = r["game_id"]
+    game = server.GAMES[gid]
+    line = puzzle["Moves"].split()
+    first = chess.Move.from_uci(line[0])
+    res = server.try_puzzle_move(puzzle["PuzzleId"],
+                                 game["board"].san(first), game_id=gid)
+    assert res["correct"] is True
+    # le coup (et la réponse adverse éventuelle) est visible sur l'échiquier
+    assert len(game["board"].move_stack) >= 1
+    assert game["puzzle"]["plies_done"] >= 1
+    # un mauvais game_id est refusé
+    gid2 = server.new_game()["game_id"]
+    try:
+        server.try_puzzle_move(puzzle["PuzzleId"], "e4", game_id=gid2)
+        raise AssertionError("doit échouer")
+    except ValueError:
+        pass

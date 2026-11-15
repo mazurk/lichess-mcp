@@ -182,11 +182,13 @@ def _parse_clock(clock: str | None) -> dict | None:
 def _create_game(white_name: str, black_name: str, level: str,
                  engine_color: str | None, kind: str = "game",
                  board: chess.Board | None = None,
-                 clock_cfg: dict | None = None) -> dict:
+                 clock_cfg: dict | None = None,
+                 name: str | None = None) -> dict:
     game = {
         "board": board or chess.Board(),
         "white_name": white_name,
         "black_name": black_name,
+        "name": name,  # nom lisible (échiquiers d'analyse, puzzles)
         "engine_color": engine_color,
         "level": level,
         "engine": Engine(level) if engine_color else None,
@@ -340,7 +342,7 @@ def new_game(white: str = "Blancs", black: str = "Noirs",
 
 
 @mcp.tool()
-def new_analysis_board(fen: str | None = None) -> dict:
+def new_analysis_board(fen: str | None = None, name: str | None = None) -> dict:
     """Crée un échiquier d'analyse (dry-run) : testez des coups des deux camps.
 
     Idéal pour explorer une position : fournissez un FEN (ou rien pour la
@@ -348,18 +350,24 @@ def new_analysis_board(fen: str | None = None) -> dict:
     sans moteur), annulez avec undo, consultez legal_moves/get_board, et
     analysez avec analyze_game. Ne pollue pas les parties en cours.
 
+    L'échiquier est visible sur l'interface web (mode Consulter) ; donnez-lui
+    un `name` pour le retrouver facilement dans la liste.
+
     Args:
         fen: position de départ au format FEN (défaut : position initiale).
+        name: nom lisible de l'échiquier (ex. "Ouverture française"), affiché
+            dans la liste des parties.
     """
     try:
         board = chess.Board(fen) if fen else chess.Board()
     except ValueError as exc:
         raise ValueError(f"FEN invalide : {exc}") from exc
     game_id = _create_game("Blancs", "Noirs", "medium", None,
-                           kind="analysis", board=board)
+                           kind="analysis", board=board, name=name)
     game = GAMES[game_id]
     return {
         "game_id": game_id,
+        "name": game["name"],
         "board": _board_str(game["board"]),
         "fen": game["board"].fen(),
         **_turn_info(game),
@@ -750,19 +758,85 @@ def next_puzzle() -> dict:
 
 
 @mcp.tool()
-def try_puzzle_move(puzzle_id: str, move: str) -> dict:
-    """Propose une solution pour un puzzle tiré avec next_puzzle.
+def start_puzzle(puzzle_id: str | None = None,
+                 name: str | None = None) -> dict:
+    """Tire un puzzle et le publie sur un échiquier observable (mode Puzzle).
+
+    Contrairement à next_puzzle (invisible), le puzzle est matérialisé sur le
+    serveur : l'interface web peut l'afficher (mode Consulter) pour observer
+    l'agent en train de le résoudre. Jouez ensuite les coups avec
+    try_puzzle_move(..., game_id=...) : chaque coup validé apparaît sur
+    l'échiquier web.
+
+    Args:
+        puzzle_id: identifiant d'un puzzle précis (défaut : tirage aléatoire).
+        name: nom lisible de l'échiquier (ex. "Puzzle du jour"), affiché dans
+            la liste des parties.
+    """
+    if puzzle_id is not None:
+        puzzle = next((p for p in PUZZLES if p["PuzzleId"] == puzzle_id), None)
+        if puzzle is None:
+            raise ValueError(f"Puzzle inconnu : {puzzle_id}")
+    else:
+        puzzle = random.choice(PUZZLES)
+    board = chess.Board(puzzle["FEN"])
+    label = (name or f"Puzzle {puzzle['PuzzleId']}").strip()
+    game_id = _create_game("Blancs", "Noirs", "medium", None,
+                           kind="puzzle", board=board, name=label)
+    game = GAMES[game_id]
+    # session de puzzle adossée à l'échiquier : les coups validés sont
+    # poussés sur game["board"], visible sur le web en temps réel.
+    game["puzzle"] = {"puzzle": puzzle, "board": game["board"], "plies_done": 0}
+    mate_in = puzzle.get("MateIn", 1)
+    hint = ("Trouvez le coup gagnant (mat en 1)."
+            if mate_in == 1
+            else f"Mat en {mate_in} : trouvez le coup clé, l'adversaire "
+                 "répondra, puis donnez le mat.")
+    return {
+        "game_id": game_id,
+        "puzzle_id": puzzle["PuzzleId"],
+        "theme": puzzle["Theme"],
+        "mate_in": mate_in,
+        "board": _board_str(game["board"]),
+        "fen": puzzle["FEN"],
+        "side_to_play": "white" if game["board"].turn == chess.WHITE else "black",
+        "hint": hint,
+        "note": "Puzzle publié : l'interface web peut l'observer (mode "
+                 "Consulter). Jouez avec try_puzzle_move(..., game_id=...).",
+    }
+
+
+@mcp.tool()
+def try_puzzle_move(puzzle_id: str, move: str,
+                    game_id: str | None = None) -> dict:
+    """Propose une solution pour un puzzle tiré avec next_puzzle/start_puzzle.
 
     Pour un mat en 2 : le coup clé est validé, la réponse de l'adversaire
     est jouée automatiquement, puis le coup de mat est demandé.
 
+    Avec game_id (puzzle publié via start_puzzle), chaque coup validé est
+    joué sur l'échiquier du serveur : l'interface web suit la résolution.
+
     Args:
         puzzle_id: identifiant du puzzle.
         move: coup proposé, en SAN ou UCI.
+        game_id: échiquier du puzzle publié (via start_puzzle) ; sans cet
+            argument, le puzzle reste invisible (session next_puzzle).
     """
-    session = ACTIVE_PUZZLES.get(puzzle_id)
-    if session is None or "puzzle" not in session:
-        raise ValueError(f"Puzzle inconnu : {puzzle_id}")
+    if game_id is not None:
+        game = _get_game(game_id)
+        if game.get("kind") != "puzzle" or not game.get("puzzle"):
+            raise ValueError(f"{game_id} n'est pas un échiquier de puzzle.")
+        session = game["puzzle"]
+        if session["puzzle"]["PuzzleId"] != puzzle_id:
+            raise ValueError(
+                f"Le puzzle de l'échiquier {game_id} est "
+                f"{session['puzzle']['PuzzleId']}, pas {puzzle_id}."
+            )
+    else:
+        session = ACTIVE_PUZZLES.get(puzzle_id)
+        if session is None or "puzzle" not in session:
+            raise ValueError(f"Puzzle inconnu : {puzzle_id}")
     puzzle = session["puzzle"]
     board = session["board"]
     line = puzzle["Moves"].split()
@@ -802,9 +876,11 @@ def try_puzzle_move(puzzle_id: str, move: str) -> dict:
         }
 
     session["plies_done"] = plies_done
+    session["solved"] = True
     mate_in = puzzle.get("MateIn", 1)
     return {
         "correct": True,
+        "solved": True,
         "note": f"Bravo ! {san} — mat en {mate_in} trouvé ({puzzle['Theme']}).",
     }
 
@@ -1107,6 +1183,7 @@ async def web_list_games(request: Request) -> JSONResponse:
             "black_name": game["black_name"],
             "engine_color": game["engine_color"],
             "kind": game["kind"],
+            "name": game["name"],
             "plies": len(board.move_stack),
             "status": _game_status(game),
             "analysed": analysis is not None,
