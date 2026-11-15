@@ -3,6 +3,13 @@
 Ce fichier décrit la procédure à suivre **à chaque évolution demandée**, sans
 avoir besoin de la répéter.
 
+**Principe clé : le serveur tourne en parallèle du travail.** Le serveur exposé
+(https://mazurkiewicz1.zapto.org) tourne depuis `DELIVERY/` — un snapshot figé
+copié dans l'image Docker au build — et **jamais** depuis ce dépôt de travail.
+On peut donc travailler ici en parallèle (branches, tests, éditions, PR) sans
+affecter le serveur en cours ; seuls les tests locaux (pytest, ruff, node)
+tournent à côté, sur des ports/processus indépendants.
+
 ## 1. Branche dédiée
 
 Toujours travailler dans une branche dédiée (ex. `feat/<sujet>-80ae23`),
@@ -71,16 +78,18 @@ Après le merge dans `main` :
      --exclude node_modules --exclude prompt.txt ./ DELIVERY/
    ```
 
-3. **Se placer dans `DELIVERY` pour toutes les actions post-merge** — le
-   déploiement est coupé puis relancé depuis la livraison (nom de projet
-   compose inchangé `-p lichess-mcp`, sinon les ports 80/443 seraient déjà
-   pris par l'ancien projet) :
+3. **Se placer dans `DELIVERY` pour toutes les actions post-merge** — recharger
+   le serveur depuis la livraison **sans `down` préalable** : `up -d --build`
+   recrée uniquement le conteneur app (image rebuildée), Caddy étant inchangé
+   reste up et les ports 80/443 ne sont jamais libérés. Le `-p lichess-mcp`
+   cible le projet compose existant :
 
    ```bash
    cd DELIVERY
-   docker compose -p lichess-mcp down
    docker compose -p lichess-mcp up -d --build
    # ouvrir Edge sur https://mazurkiewicz1.zapto.org
    ```
 
 Vérifier que le site répond (HTTPS 200) et faire un smoke test rapide si pertinent.
+Le serveur n'est donc indisponible que quelques secondes (recréation du
+conteneur app), jamais pendant le travail dans le dépôt principal.
