@@ -344,3 +344,20 @@ def test_list_games_tool():
     server.resign(gid1, "white")
     g1 = next(g for g in server.list_games()["games"] if g["game_id"] == gid1)
     assert g1["status"] == "terminée"
+
+
+def test_list_games_kind_filter_and_fields():
+    """list_games(kind=...) filtre par type ; chaque entrée expose trait et FEN."""
+    server.GAMES.clear()
+    gid_game = server.new_game(white="A", black="B")["game_id"]
+    gid_analysis = server.new_analysis_board()["game_id"]
+    server.play_move(gid_game, "e4", color="white")
+    assert [g["game_id"] for g in server.list_games(kind="game")["games"]] == [gid_game]
+    assert [g["game_id"] for g in server.list_games(kind="analysis")["games"]] == [gid_analysis]
+    assert server.list_games(kind="puzzle")["games"] == []
+    with pytest.raises(ValueError):
+        server.list_games(kind="xxx")
+    g = server.list_games()["games"][0]
+    assert g["turn"] in ("white", "black")
+    assert g["fen"] == server.get_board(g["game_id"])["fen"]
+    assert g["plies"] == (1 if g["game_id"] == gid_game else 0)

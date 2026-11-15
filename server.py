@@ -367,18 +367,28 @@ def new_analysis_board(fen: str | None = None) -> dict:
 
 
 @mcp.tool()
-def list_games() -> dict:
-    """Liste toutes les parties présentes sur le serveur.
+def list_games(kind: str | None = None) -> dict:
+    """Liste les parties présentes sur le serveur, sans avoir besoin de leur identifiant.
 
     Pour chaque partie : son identifiant (à passer à join_game / get_board /
     play_move), les noms des joueurs, le camp joué par le moteur, le type
-    ("game" = partie, "analysis" = échiquier d'analyse/dry-run), le nombre
-    de coups, le statut ("en cours" / "terminée"), si elle a été analysée
-    et les camp libres/rejoignables. Utile pour découvrir les parties avant
-    de les rejoindre ou les analyser.
+    ("game" = partie, "analysis" = échiquier d'analyse/dry-run, "puzzle" =
+    puzzle publié), le camp au trait, le nombre de coups, le FEN actuel, le
+    statut ("en cours" / "terminée"), si elle a été analysée et les camps
+    libres/rejoignables. Utile pour découvrir les parties avant de les
+    rejoindre, les consulter ou les analyser.
+
+    Args:
+        kind: filtre optionnel — "game", "analysis" ou "puzzle". None = tout.
     """
+    if kind is not None:
+        kind = str(kind).strip().lower()
+        if kind not in ("game", "analysis", "puzzle"):
+            raise ValueError("kind doit valoir 'game', 'analysis' ou 'puzzle' (ou None).")
     games = []
     for game_id, game in GAMES.items():
+        if kind is not None and game["kind"] != kind:
+            continue
         board = game["board"]
         analysis = game.get("analysis")
         games.append({
@@ -387,7 +397,9 @@ def list_games() -> dict:
             "black_name": game["black_name"],
             "engine_color": game["engine_color"],
             "kind": game["kind"],
+            "turn": "white" if board.turn == chess.WHITE else "black",
             "plies": len(board.move_stack),
+            "fen": board.fen(),
             "status": _game_status(game),
             "analysed": analysis is not None,
             "analysis_depth": analysis["depth"] if analysis else None,
