@@ -45,13 +45,24 @@ def test_workflow_labels_but_never_closes():
     assert "issues.update" not in text
 
 
-def test_agents_md_documents_three_issue_states():
-    """AGENTS.md documente les 3 états : open / developped / closed."""
+def test_agents_md_documents_four_issue_states():
+    """AGENTS.md documente les 4 états : open / developped / deployed / closed."""
     text = AGENTS.read_text(encoding="utf-8")
-    assert "open" in text and "developped" in text and "closed" in text
+    for state in ("open", "developped", "deployed", "closed"):
+        assert state in text, f"état {state} manquant dans AGENTS.md"
     assert "label-developped.yml" in text
     # pratique : l'agent ne ferme pas les issues, c'est Nicolas qui valide
     assert "ne ferme" in text
+    # pratique : l'agent pose lui-même le label deployed après le déploiement Pi
+    assert "deployed" in text and "déploiement Pi" in text
+
+
+def test_issues_md_documents_four_states():
+    """docs/ISSUES.md documente aussi les 4 états et le filtre deployed."""
+    text = (REPO / "docs" / "ISSUES.md").read_text(encoding="utf-8")
+    for state in ("open", "developped", "deployed", "closed"):
+        assert f"**{state}**" in text
+    assert "label:deployed is:open" in text
 
 
 def test_agents_md_requires_issue_before_any_bugfix():
