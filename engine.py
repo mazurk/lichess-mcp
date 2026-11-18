@@ -6,8 +6,11 @@ automatiquement en priorité ; sinon on retombe sur le moteur intégré.
 
 from __future__ import annotations
 
+import atexit
+import contextlib
 import random
 import shutil
+import threading
 
 import chess
 
@@ -33,6 +36,36 @@ def _stockfish_path() -> str | None:
     return shutil.which("stockfish")
 
 
+# Process Stockfish persistant partagé entre les coups du moteur (issue #63,
+# bonus) : évite de spawner un process par coup (~100 ms de spawn chacun).
+# Protégé par un lock : SimpleEngine n'est pas thread-safe. État dans un dict
+# mutable (pas de `global`, PLW0603).
+_stockfish_lock = threading.Lock()
+_stockfish_state: dict = {"proc": None}
+
+
+def _spawn_stockfish():
+    """(Re)crée le process Stockfish persistant. À appeler sous le lock."""
+    import chess.engine
+
+    proc = chess.engine.SimpleEngine.popen_uci(_stockfish_path())
+    _stockfish_state["proc"] = proc
+    return proc
+
+
+def _close_stockfish() -> None:
+    """Ferme proprement le process persistant (appelé à la sortie du process)."""
+    with _stockfish_lock:
+        proc = _stockfish_state["proc"]
+        if proc is not None:
+            with contextlib.suppress(Exception):
+                proc.quit()
+            _stockfish_state["proc"] = None
+
+
+atexit.register(_close_stockfish)
+
+
 class Engine:
     def __init__(self, level: str = "medium"):
         self.level = level if level in LEVEL_DEPTH else "medium"
@@ -49,12 +82,24 @@ class Engine:
     def _stockfish_move(self, board: chess.Board, moves: list[chess.Move]) -> chess.Move:
         import chess.engine
 
-        from analysis import engine_options  # Threads/Hash (issue #54)
+        from analysis import engine_options  # Threads/Hash (issues #54/#63)
 
         depth = {"easy": 4, "medium": 8, "hard": 12}[self.level]
-        with chess.engine.SimpleEngine.popen_uci(self._stockfish) as eng:
-            eng.configure(engine_options())
-            result = eng.play(board, chess.engine.Limit(depth=depth))
+        # Process persistant partagé (issue #63, bonus) : un seul spawn pour
+        # tous les coups, recréé si le process meurt. Lock : SimpleEngine
+        # n'est pas thread-safe.
+        with _stockfish_lock:
+            proc = _stockfish_state["proc"] or _spawn_stockfish()
+            try:
+                # mono-thread si depth <= 10, multi-cœurs au-delà (issues #54/#63)
+                proc.configure(engine_options(depth))
+                result = proc.play(board, chess.engine.Limit(depth=depth))
+            except chess.engine.EngineError:
+                # process mort : on le respawn une fois
+                _stockfish_state["proc"] = None
+                proc = _spawn_stockfish()
+                proc.configure(engine_options(depth))
+                result = proc.play(board, chess.engine.Limit(depth=depth))
         if result.move in moves:
             return result.move
         return random.choice(moves)

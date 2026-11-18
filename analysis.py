@@ -29,13 +29,18 @@ STOCKFISH_CANDIDATES = [
 ]
 
 
-def engine_options() -> dict:
-    """Options UCI de Stockfish : Threads et Hash (issue #54).
+def engine_options(depth: int | None = None) -> dict:
+    """Options UCI de Stockfish : Threads et Hash (issues #54 et #63).
 
     Par défaut, le process démarre avec 1 seul thread — sur une machine
     multi-cœur (ex. Raspberry Pi 4 cœurs), l'analyse était ~3x plus lente que
     nécessaire. Threads = min(cœurs, 4) par défaut, Hash = 256 Mo ;
     surcharge possible via LICHESS_MCP_STOCKFISH_THREADS / _HASH.
+
+    Règle (demandée par Nicolas) : **pas de multi-threads si depth <= 10** —
+    à faible profondeur, l'overhead de synchronisation des threads coûte plus
+    cher que le calcul lui-même, donc on force Threads=1. Au-delà
+    (depth > 10), on exploite les cœurs (min(cœurs, 4)).
     """
     def env_int(name: str, default: int) -> int:
         raw = os.environ.get(name, "").strip()
@@ -45,8 +50,9 @@ def engine_options() -> dict:
             return default
 
     cpus = os.cpu_count() or 1
+    default_threads = 1 if (depth is not None and depth <= 10) else min(cpus, 4)
     return {
-        "Threads": env_int("LICHESS_MCP_STOCKFISH_THREADS", min(cpus, 4)),
+        "Threads": env_int("LICHESS_MCP_STOCKFISH_THREADS", default_threads),
         "Hash": env_int("LICHESS_MCP_STOCKFISH_HASH", 256),
     }
 
@@ -140,6 +146,50 @@ def _set_pgn_headers(game: chess.pgn.Game, *, white_name: str | None,
         game.headers["Date"] = time.strftime("%Y.%m.%d", time.gmtime())
 
 
+def _annotate_move(node, move: chess.Move, *, san: str, board: chess.Board,
+                   mover: chess.Color, score_after: int, delta: int,
+                   best_san: str | None, pv_san: list[str],
+                   move_clock: dict | None, critical: list[dict]):
+    """Annote un coup dans le PGN (eval, clk, NAG/label) et classe le delta.
+
+    Retourne (nouveau node, label, entrée pour `evals`, camp en erreur ou None).
+    """
+    node = node.add_variation(move)
+    comment = f"[%eval {_eval_str(score_after)}]"
+    if move_clock:
+        comment += f" [%clk {_clk_str(move_clock['remaining_ms'])}]"
+    klass = _classify(delta)
+    label = None
+    error_side = None
+    if klass:
+        nag, label = klass
+        node.nags.add(nag)
+        comment += f" {label}"
+        if best_san:
+            comment += f", meilleur coup : {best_san}"
+        critical.append({
+            "move": san,
+            "move_number": board.fullmove_number,
+            "side": "white" if mover == chess.WHITE else "black",
+            "label": label,
+            "eval": _eval_str(score_after),
+            "best_move": best_san,
+            "eval_loss": round(delta / 100, 2),
+        })
+        error_side = "white" if mover == chess.WHITE else "black"
+    node.comment = comment
+    entry = {
+        "san": san,
+        "move_number": board.fullmove_number,
+        "side": "white" if mover == chess.WHITE else "black",
+        "eval_white": score_after if mover == chess.WHITE else -score_after,
+        "label": label,
+        "best_move": best_san if label else None,
+        "pv_san": pv_san,
+    }
+    return node, label, entry, error_side
+
+
 def analyze_moves(moves: list[chess.Move], depth: int = 15,
                   root: chess.Board | None = None,
                   move_clocks: list[dict | None] | None = None, *,
@@ -183,11 +233,16 @@ def analyze_moves(moves: list[chess.Move], depth: int = 15,
     errors_white = errors_black = 0
 
     with chess.engine.SimpleEngine.popen_uci(path) as engine:
-        # Threads/Hash dès le spawn, avant tout go depth (issue #54).
-        engine.configure(engine_options())
+        # Threads/Hash dès le spawn, avant tout go depth (issues #54/#63) :
+        # mono-thread si depth <= 10, multi-cœurs au-delà.
+        engine.configure(engine_options(depth))
+        # Analyse de la position initiale (avant le 1er coup) : le résultat
+        # « after » de chaque coup est réutilisé comme « before » du suivant
+        # (même position, même profondeur) — sinon chaque position était
+        # analysée 2 fois, soit ~50 % du temps d'analyse en doublon (issue #63).
+        info = engine.analyse(board, chess.engine.Limit(depth=depth))
         for i, move in enumerate(moves):
             mover = board.turn
-            info = engine.analyse(board, chess.engine.Limit(depth=depth))
             score_before = _pov_score_cp(info, mover)
             pv = info.get("pv") or []
             best_san = board.san(pv[0]) if pv else None
@@ -199,47 +254,25 @@ def analyze_moves(moves: list[chess.Move], depth: int = 15,
                 # Le camp qui vient de jouer mate : pas d'analyse nécessaire,
                 # et la convention UCI « mate 0 » rend le signe ambigu.
                 score_after = 100000 - 100
+                info_after = None
             else:
                 info_after = engine.analyse(board, chess.engine.Limit(depth=depth))
                 score_after = _pov_score_cp(info_after, mover)
-            score_white = score_after if mover == chess.WHITE else -score_after
+            # Position suivante = position courante : réutilisée au tour suivant.
+            if info_after is not None:
+                info = info_after
             delta = score_after - score_before
-
-            node = node.add_variation(move)
-            comment = f"[%eval {_eval_str(score_after)}]"
-            if move_clocks is not None and i < len(move_clocks) and move_clocks[i]:
-                comment += f" [%clk {_clk_str(move_clocks[i]['remaining_ms'])}]"
-            klass = _classify(delta)
-            label = None
-            if klass:
-                nag, label = klass
-                node.nags.add(nag)
-                comment += f" {label}"
-                if best_san:
-                    comment += f", meilleur coup : {best_san}"
-                critical.append({
-                    "move": san,
-                    "move_number": board.fullmove_number,
-                    "side": "white" if mover == chess.WHITE else "black",
-                    "label": label,
-                    "eval": _eval_str(score_after),
-                    "best_move": best_san,
-                    "eval_loss": round(delta / 100, 2),
-                })
-                if mover == chess.WHITE:
-                    errors_white += 1
-                else:
-                    errors_black += 1
-            node.comment = comment
-            evals.append({
-                "san": san,
-                "move_number": board.fullmove_number,
-                "side": "white" if mover == chess.WHITE else "black",
-                "eval_white": score_white,
-                "label": label,
-                "best_move": best_san if label else None,
-                "pv_san": pv_san,
-            })
+            move_clock = (move_clocks[i]
+                          if move_clocks is not None and i < len(move_clocks) else None)
+            node, label, entry, error_side = _annotate_move(
+                node, move, san=san, board=board, mover=mover,
+                score_after=score_after, delta=delta, best_san=best_san,
+                pv_san=pv_san, move_clock=move_clock, critical=critical)
+            evals.append(entry)
+            if error_side == "white":
+                errors_white += 1
+            elif error_side:
+                errors_black += 1
 
     return {
         "pgn": str(game),
