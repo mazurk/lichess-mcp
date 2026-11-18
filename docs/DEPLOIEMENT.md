@@ -81,7 +81,7 @@ ssh pi-mcp 'cd ~/lichess-mcp && git checkout -- .'
 ssh pi-mcp 'cd ~/lichess-mcp && git config receive.denyCurrentBranch'  # updateInstead, réglé 1x
 git push ssh://pi-mcp/home/nicolas/lichess-mcp main:main
 # 3. rebuild du conteneur app
-ssh pi-mcp 'cd ~/lichess-mcp && docker compose up -d --build'
+ssh pi-mcp 'cd ~/lichess-mcp && docker compose build --build-arg GIT_COMMIT=$(git rev-parse --short HEAD) && docker compose up -d'
 # 4. vérification
 curl -s -o /dev/null -w "%{http_code}\n" https://mazurkiewicz1.zapto.org/   # attendu : 200
 ```

@@ -122,9 +122,9 @@ Après le merge dans `main` :
      # 2. pousser main vers le clone de production (met à jour son worktree)
      git push ssh://pi-mcp/home/nicolas/lichess-mcp main:main
      # 3. rebuild du conteneur app sur la Pi — le commit courant est injecté
-     #    dans l'image (ARG GIT_COMMIT) et affiché dans le badge de version
-     #    en coin haut gauche de l'interface web (issue #67)
-     ssh pi-mcp 'cd ~/lichess-mcp && docker compose up -d --build --build-arg GIT_COMMIT=$(git rev-parse --short HEAD)'
+     #    dans l'image (ARG GIT_COMMIT, passé à `build` pas à `up`) et affiché
+     #    dans le badge de version en coin haut gauche de l'UI (issue #67)
+     ssh pi-mcp 'cd ~/lichess-mcp && docker compose build --build-arg GIT_COMMIT=$(git rev-parse --short HEAD) && docker compose up -d'
      ```
 
      `up -d --build` recrée **uniquement** le conteneur app (image rebuildée) :
