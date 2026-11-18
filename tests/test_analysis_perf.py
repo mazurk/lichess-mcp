@@ -23,6 +23,14 @@ def _no_env_override(monkeypatch):
     monkeypatch.delenv("LICHESS_MCP_STOCKFISH_HASH", raising=False)
 
 
+@pytest.fixture(autouse=True)
+def _reset_stockfish_proc():
+    """Isole le process persistant du moteur entre les tests."""
+    engine_mod._stockfish_state["proc"] = None
+    yield
+    engine_mod._stockfish_state["proc"] = None
+
+
 def test_threads_rule_depth_le_10_is_monothread():
     """depth <= 10 -> Threads=1 (pas de multi-threads)."""
     assert analysis.engine_options(depth=1)["Threads"] == 1
@@ -122,3 +130,47 @@ def test_engine_passe_son_depth_aux_options(monkeypatch):
     eng_hard.choose_move(chess.Board())
     assert seen["depth"] == 12
     assert fake.opts["Threads"] == min(os.cpu_count() or 1, 4)
+
+
+def test_engine_reutilise_un_seul_process_stockfish(monkeypatch):
+    """Issue #63 (bonus) : un seul spawn Stockfish pour plusieurs coups du
+    moteur, au lieu d'un process par coup."""
+    spawns = []
+
+    class FakeProc(_FakeEngine):
+        def __init__(self):
+            super().__init__()
+            spawns.append(1)
+
+    monkeypatch.setattr(engine_mod, "_stockfish_path", lambda: "/fake/stockfish")
+    monkeypatch.setattr(
+        chess.engine.SimpleEngine, "popen_uci", staticmethod(lambda p: FakeProc())
+    )
+    eng = engine_mod.Engine("medium")
+    for _ in range(3):
+        assert eng.choose_move(chess.Board()) is not None
+    assert len(spawns) == 1, f"{len(spawns)} spawns pour 3 coups (attendu 1)"
+
+
+def test_engine_respawn_si_process_mort(monkeypatch):
+    """Si le process persistant meurt (EngineError), il est respawné une fois."""
+    spawns = []
+    state = {"play": 0}
+
+    class DyingProc(_FakeEngine):
+        def play(self, board, limit):
+            state["play"] += 1
+            if state["play"] == 1:
+                raise chess.engine.EngineError("process died")
+            return super().play(board, limit)
+
+    def fake_popen(path):
+        spawns.append(1)
+        return DyingProc()
+
+    monkeypatch.setattr(engine_mod, "_stockfish_path", lambda: "/fake/stockfish")
+    monkeypatch.setattr(chess.engine.SimpleEngine, "popen_uci", staticmethod(fake_popen))
+    eng = engine_mod.Engine("medium")
+    move = eng.choose_move(chess.Board())
+    assert move is not None
+    assert len(spawns) == 2  # 1er process mort -> respawn
