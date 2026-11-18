@@ -160,3 +160,36 @@ def test_anyone_can_play_any_side_by_id():
     assert server.play_move(gid, "e4", color="white")["move_played"] == "e4"
     assert server.play_move(gid, "e6", color="black")["move_played"] == "e6"
     assert server.play_move(gid, "d4", color="white")["move_played"] == "d4"
+
+
+def test_get_board_pieces_map():
+    """Issue #50 : liste structurée de pièces pour lecture fiable."""
+    gid = server.new_game(white="A", black="B")["game_id"]
+    server.play_move(gid, "Nf3", color="white")
+    b = server.get_board(gid)
+    pieces = b["pieces"]
+    assert pieces["white"]["king"] == ["e1"]
+    assert "f3" in pieces["white"]["knights"]
+    assert "g1" not in pieces["white"]["knights"]
+    assert pieces["black"]["king"] == ["e8"]
+    # 16 pions au total avant tout coup noir
+    assert len(pieces["white"]["pawns"]) == 8
+    assert len(pieces["black"]["pawns"]) == 8
+
+
+def test_new_game_returns_seats_and_ready():
+    """Issue #49 : new_game expose l'état des sièges dès la création."""
+    r = server.new_game(white="Agent", black="Adversaire", clock="10+0")
+    assert r["white_seat"] is None and r["black_seat"] is None
+    assert r["ready"] is False
+    assert "ready=false" in r["note"]
+    # dès que les DEUX camps rejoignent : ready=True
+    gid = r["game_id"]
+    server.join_game(gid, "Agent", color="white")
+    j = server.join_game(gid, "Adversaire", color="black")
+    assert j["ready"] is True
+    assert server.get_board(gid)["ready"] is True
+    # contre le moteur avec auto-join du créateur (player=...) : prêt tout de suite
+    r2 = server.new_game(white="A", engine_color="black", clock="10+0", player="A")
+    assert r2["ready"] is True
+    assert r2["white_seat"] == "A"
