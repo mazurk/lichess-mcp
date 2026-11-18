@@ -15,6 +15,7 @@ import os
 import random
 import re
 import sys
+import threading
 import time
 import uuid
 from pathlib import Path
@@ -166,29 +167,44 @@ def _game_from_json(data: dict) -> tuple[str, dict]:
     return data["game_id"], game
 
 
+# Verrou de sérialisation des écritures disque (issue #55).
+_PERSIST_LOCK = threading.Lock()
+
+
 def _persist() -> None:
-    """Écrit l'état du serveur en JSON de façon atomique (tmp + os.replace)."""
-    path = _state_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    state = {
-        "version": 1,
-        "saved_at": time.time(),
-        "games": [_game_to_json(gid, g) for gid, g in GAMES.items()],
-        "puzzle_sessions": [
-            {
-                "puzzle_id": s["puzzle"]["PuzzleId"],
-                "root_fen": s["board"].root().fen(),
-                "moves": [m.uci() for m in s["board"].move_stack],
-                "plies_done": s["plies_done"],
-            }
-            for s in ACTIVE_PUZZLES.values()
-            if "puzzle" in s
-        ],
-        "cheat_alerts": CHEAT_ALERTS,
-    }
-    tmp = path.with_name(path.name + ".tmp")
-    tmp.write_text(json.dumps(state), encoding="utf-8")
-    os.replace(tmp, path)
+    """Écrit l'état du serveur en JSON de façon atomique (tmp + os.replace).
+
+    Sérialisé par un verrou : des appels concurrents (ex. Promise.all de
+    delete_game) écrivaient dans le même fichier .tmp — l'un déplaçait le
+    tmp avant le rename de l'autre (Errno 2, issue #55).
+    """
+    with _PERSIST_LOCK:
+        path = _state_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        state = {
+            "version": 1,
+            "saved_at": time.time(),
+            "games": [_game_to_json(gid, g) for gid, g in GAMES.items()],
+            "puzzle_sessions": [
+                {
+                    "puzzle_id": s["puzzle"]["PuzzleId"],
+                    "root_fen": s["board"].root().fen(),
+                    "moves": [m.uci() for m in s["board"].move_stack],
+                    "plies_done": s["plies_done"],
+                }
+                for s in ACTIVE_PUZZLES.values()
+                if "puzzle" in s
+            ],
+            "cheat_alerts": CHEAT_ALERTS,
+        }
+        # tmp unique par écriture : même sous verrou, deux processus/PID
+        # distincts ne se marcheraient pas dessus (issue #55).
+        tmp = path.with_name(f"{path.name}.{os.getpid()}.{uuid.uuid4().hex[:8]}.tmp")
+        try:
+            tmp.write_text(json.dumps(state), encoding="utf-8")
+            os.replace(tmp, path)
+        finally:
+            tmp.unlink(missing_ok=True)
 
 
 def _load_state() -> None:
@@ -645,6 +661,26 @@ def _clocks_at_ply(game: dict, ply: int) -> dict | None:
     return result
 
 
+def _pieces_map(board: chess.Board) -> dict:
+    """Pièces par camp et par type, cases triées (issue #50).
+
+    Alternative fiable à la lecture du plateau ASCII — source d'erreurs de
+    lecture documentées (fou « h3 » lu en « g4 », pions déplacés d'une case).
+    Format : {"white": {"king": "e2", "pawns": ["a2", ...], ...}, "black": {...}}.
+    """
+    result: dict[str, dict[str, list[str]]] = {"white": {}, "black": {}}
+    for square, piece in board.piece_map().items():
+        color = "white" if piece.color == chess.WHITE else "black"
+        base = chess.piece_name(piece.piece_type)  # "knight", "pawn", ...
+        # pluriel au format Lichess (rooks, knights...) sauf le roi unique
+        name = base if base == "king" else base + "s"
+        result[color].setdefault(name, []).append(chess.square_name(square))
+    for pieces_by_type in result.values():
+        for name in pieces_by_type:
+            pieces_by_type[name] = sorted(pieces_by_type[name])
+    return result
+
+
 def _seat_info(game: dict) -> dict:
     return {"white_seat": game["white_seat"], "black_seat": game["black_seat"]}
 
@@ -652,7 +688,7 @@ def _seat_info(game: dict) -> dict:
 @mcp.tool()
 def new_game(white: str = "Blancs", black: str = "Noirs",
              level: str = "medium", engine_color: str | None = None,
-             clock: str | None = None) -> dict:
+             clock: str | None = None, player: str | None = None) -> dict:
     """Démarre une nouvelle partie.
 
     Chaque camp porte un nom de joueur (humain, agent IA, ou "Moteur").
@@ -674,6 +710,10 @@ def new_game(white: str = "Blancs", black: str = "Noirs",
             que lorsque les deux camps sont couverts (joueur ayant rejoint via
             join_game, ou moteur) : avec une horloge, le premier coup des
             blancs est refusé tant que le camp noir n'est pas couvert.
+        player: nom du créateur — occupe automatiquement le camp blanc
+            (auto-join à la création, inutile de rappeler join_game). La
+            réponse contient l'état des sièges (white_seat/black_seat) et un
+            champ `ready` : True quand les deux camps sont couverts.
     """
     level = _check_level(level)
     if engine_color is not None:
@@ -684,6 +724,15 @@ def new_game(white: str = "Blancs", black: str = "Noirs",
 
     game_id = _create_game(white, black, level, engine_color, clock_cfg=clock_cfg)
     game = GAMES[game_id]
+    # auto-jointure du créateur sur son camp (issue #49) : évite d'avoir à
+    # rappeler join_game après la création pour occuper son siège.
+    if player is not None and engine_color != "white" and game["kind"] == "game":
+        creator = str(player).strip()
+        if creator:
+            game["white_seat"] = creator
+            game["white_name"] = creator
+            _maybe_start_clock(game)
+            _persist()
 
     result = {
         "game_id": game_id,
@@ -692,6 +741,18 @@ def new_game(white: str = "Blancs", black: str = "Noirs",
         "board": _board_str(game["board"]),
         "fen": game["board"].fen(),
     }
+    # état des sièges dès la création (issue #49) : le créateur sait
+    # si l'adversaire a rejoint, sans attendre l'erreur au 1er coup.
+    result.update(_seat_info(game))
+    result["ready"] = _both_sides_covered(game)
+    if (game["clock_cfg"] is not None and game["kind"] == "game"
+            and not result["ready"]):
+        result["note"] = (
+            "Partie non prête (ready=false) : avec une horloge, le premier coup "
+            "des blancs sera refusé tant que le camp noir n'est pas couvert "
+            "(join_game ou play_move(player=...)). Poller ready via get_board "
+            "(champs white_seat/black_seat)."
+        )
     if engine_color == "white":
         reply = _engine_reply(game)
         result["engine_move"] = reply
@@ -857,6 +918,8 @@ def join_game(game_id: str, player: str, color: str | None = None,
         "your_color": color,
         "board": _board_str(game["board"]),
         "fen": game["board"].fen(),
+        "ready": _both_sides_covered(game),
+        **_seat_info(game),
         **_turn_info(game),
     }
 
@@ -891,6 +954,8 @@ def get_board(game_id: str, ply: int | None = None) -> dict:
     result = {
         "board": _board_str(replay),
         "fen": replay.fen(),
+        # lecture fiable sans décrypter l'ASCII (issue #50)
+        "pieces": _pieces_map(replay),
         "in_check": replay.is_check(),
         "move_number": replay.fullmove_number,
         "ply": ply,
@@ -904,6 +969,8 @@ def get_board(game_id: str, ply: int | None = None) -> dict:
         "over": _is_over(game),
         "result": _result_text(game) or None,
         "winner": _winner(game),
+        # partie prête ? (les deux camps couverts — utile avec horloge, issue #49)
+        "ready": _both_sides_covered(game),
         **_turn_info(game),
         # en relecture, le trait est celui de la position rejouée
         "turn": "white" if replay.turn == chess.WHITE else "black",
