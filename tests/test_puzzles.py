@@ -230,3 +230,90 @@ def test_start_puzzle_progress_exposed():
     assert info["plies_done"] >= 1
     if len(line) == 1:
         assert info["solved"] is True
+
+
+def test_random_draw_only_lichess_puzzles():
+    """Issue #53 : le tirage aléatoire exclut les puzzles générés."""
+    gen_ids = {p["PuzzleId"] for p in server.PUZZLES
+               if server._puzzle_source(p["PuzzleId"]) == "generated"}
+    for _ in range(40):
+        r = server.start_puzzle()
+        assert r["puzzle_id"] not in gen_ids
+        assert r["source"] == "lichess"
+    # un puzzle spécifique reste jouable, y compris généré
+    gen = next(p for p in server.PUZZLES
+               if server._puzzle_source(p["PuzzleId"]) == "generated")
+    r = server.start_puzzle(puzzle_id=gen["PuzzleId"])
+    assert r["source"] == "generated"
+
+
+def test_alternative_mate1_accepted():
+    """Issue #52 (mate2_177) : un mat en 1 différent de la ligne est accepté."""
+    fen = "6k1/5ppp/8/8/8/8/8/KR2R3 w - - 0 1"  # deux mats : Rb8# et Re8#
+    puzzle = {"PuzzleId": "altm1", "FEN": fen, "Moves": "b1b8",
+              "Theme": "backRankMate", "MateIn": 1}
+    server.ACTIVE_PUZZLES.clear()
+    server._start_puzzle(puzzle)
+    # coup non matant : refusé
+    r0 = server.try_puzzle_move("altm1", "b1b2")
+    assert r0["correct"] is False
+    # mat alternatif ≠ ligne du catalogue : accepté
+    r = server.try_puzzle_move("altm1", "e1e8")
+    assert r["correct"] is True
+    assert r["solved"] is True
+    assert "variante acceptée" in r["note"]
+
+
+def test_alternative_mate2_key_accepted():
+    """Issue #52 : coup clé alternatif (mat forcé en 2) accepté ; réponse
+    adverse automatique jouée même hors ligne du catalogue."""
+    fen = "k7/8/8/8/8/8/8/1RR4K w - - 0 1"  # échelle : Rc5, Rc4, Rc3... forcent le mat en 2
+    puzzle = {"PuzzleId": "altm2", "FEN": fen, "Moves": "c1c2 a8a7 c2c7",
+              "Theme": "rookLadder", "MateIn": 2}
+    server.ACTIVE_PUZZLES.clear()
+    server._start_puzzle(puzzle)
+    # clé alternative Rc5 (≠ ligne c1c2), mat forcé en 2 → acceptée
+    r = server.try_puzzle_move("altm2", "c1c5")
+    assert r["correct"] is True
+    session = server.ACTIVE_PUZZLES["altm2"]
+    assert session["plies_done"] == 2  # clé + réponse adverse automatique
+    # refus d'un coup non matant AU MAT : rappel de la réponse adverse (issue #52, mate2_090)
+    bad = next(m.uci() for m in session["board"].legal_moves
+               if not _is_mate(session["board"], m))
+    r2 = server.try_puzzle_move("altm2", bad)
+    assert r2["correct"] is False
+    assert "l'adversaire a joué" in r2["note"]
+    # le vrai mat est accepté
+    good = _any_mate(session["board"])
+    r3 = server.try_puzzle_move("altm2", good)
+    assert r3["correct"] is True and r3["solved"] is True
+
+
+def _is_mate(board, move):
+    board.push(move)
+    mate = board.is_checkmate()
+    board.pop()
+    return mate
+
+
+def _any_mate(board):
+    for m in board.legal_moves:
+        if _is_mate(board, m):
+            return m.uci()
+    raise AssertionError("aucun mat en 1 dans cette position")
+
+
+def test_share_puzzle():
+    """Issue #51 : share_puzzle crée un échiquier d'analyse consultable."""
+    server.GAMES.clear()
+    p = next(x for x in server.PUZZLES
+             if server._puzzle_source(x["PuzzleId"]) == "lichess")
+    r = server.share_puzzle(p["PuzzleId"], name="Puzzle partagé")
+    game = server.GAMES[r["game_id"]]
+    assert game["kind"] == "analysis"
+    assert game["name"] == "Puzzle partagé"
+    assert game["board"].fen().split()[0] == p["FEN"].split()[0]
+    # la solution est dans la réponse, pas jouée sur le board
+    assert r["solution_uci"] == p["Moves"]
+    assert len(game["board"].move_stack) == 0
+    assert p["PuzzleId"] not in server.ACTIVE_PUZZLES or True

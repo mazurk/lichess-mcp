@@ -52,8 +52,8 @@ jobs:
                       "new_game", "new_analysis_board",
                       "join_game", "get_board", "legal_moves", "play_move",
                       "wait_for_turn", "undo", "resign", "game_status",
-                      "next_puzzle", "try_puzzle_move", "analyze_game",
-                      "analyze_pgn",
+                      "next_puzzle", "try_puzzle_move", "share_puzzle",
+                      "analyze_game", "analyze_pgn",
                   }
                   missing = expected - names
                   assert not missing, f"outils manquants : {missing}"
