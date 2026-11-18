@@ -187,6 +187,32 @@ def test_cheat_alerts_persisted(tmp_path):
     assert gid in server.CHEAT_ALERTS[0]["while_in_progress"]
 
 
+def test_published_analysis_survives_restart(tmp_path):
+    """Régression : l'analyse publiée (analyze_game, publish=True) doit être
+    restaurée au redémarrage.
+
+    `_game_to_json` sérialise `analysis`, mais `_game_from_json` ne la
+    restaurait pas : après un restart du conteneur, la partie analysée
+    redevenait `analysed=False` dans /web/api/games — elle quittait le mode
+    « Analyse » de l'interface et n'apparaissait plus que comme « terminée ».
+    """
+    gid = server.new_game(white="Nicolas", black="Agent IA")["game_id"]
+    server.play_move(gid, "e4", color="white")
+    server.GAMES[gid]["analysis"] = {"depth": 12, "evals": [0.31, 0.12], "at": 1700000000.0}
+    server.GAMES[gid]["last_analysis_at"] = 1700000000.0
+    server._persist()
+    raw = json.loads(_state_file(tmp_path).read_text(encoding="utf-8"))
+    assert next(g for g in raw["games"] if g["game_id"] == gid)["analysis"]
+
+    _restart()
+
+    game = server.GAMES[gid]
+    assert game["analysis"] == {"depth": 12, "evals": [0.31, 0.12], "at": 1700000000.0}
+    assert game["last_analysis_at"] == 1700000000.0
+    # l'API web la classe bien comme analysée (filtre du mode « Analyse »)
+    assert server._web_state(gid, game, None)["analysed"] is True
+
+
 def test_corrupt_state_file_starts_empty(tmp_path):
     _state_file(tmp_path).write_text("{ pas du json valide !!!", encoding="utf-8")
     server.GAMES["bidon"] = {"kind": "game"}

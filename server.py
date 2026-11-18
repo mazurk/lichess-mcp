@@ -157,6 +157,11 @@ def _game_from_json(data: dict) -> tuple[str, dict]:
         "move_clocks": data.get("move_clocks", []),
         "created_at": data.get("created_at") or time.time(),
         "last_analysis_at": data.get("last_analysis_at"),
+        # analyse publiée par analyze_game(publish=True) : sans cette ligne,
+        # elle était perdue au redémarrage et la partie réapparaissait non
+        # analysée dans l'interface web (badge « terminée » seul, mode
+        # « Analyse » vide pour cette partie).
+        "analysis": data.get("analysis"),
     }
     puzzle_id = data.get("puzzle_id")
     if puzzle_id:
