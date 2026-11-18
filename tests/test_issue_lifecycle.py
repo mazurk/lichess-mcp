@@ -52,3 +52,15 @@ def test_agents_md_documents_three_issue_states():
     assert "label-developped.yml" in text
     # pratique : l'agent ne ferme pas les issues, c'est Nicolas qui valide
     assert "ne ferme" in text
+
+
+def test_agents_md_requires_issue_before_any_bugfix():
+    """Règle « bug = issue d'abord » : un bug sans issue GitHub doit d'abord
+    donner lieu à une issue créée AVANT le correctif (état open)."""
+    text = AGENTS.read_text(encoding="utf-8")
+    assert "Bug = issue d'abord" in text
+    assert "la créer AVANT de commencer" in text
+    assert "Aucun correctif de bug sans issue préalable" in text
+    # la doc utilisateur reflète la même règle
+    issues_doc = (REPO / "docs" / "ISSUES.md").read_text(encoding="utf-8")
+    assert "Bug = issue d'abord" in issues_doc

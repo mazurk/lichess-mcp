@@ -8,6 +8,9 @@
 
 Règles :
 
+- **Bug = issue d'abord** : tout bug corrigé a son issue créée **avant** le
+  correctif (état `open`), même s'il est remonté à la volée. Aucun correctif
+  de bug sans issue préalable.
 - Une PR référence les issues traitées via `#N` dans son titre ou sa description
   (ex. « Issues #49 #50 #54 #55 : ... »).
 - Au merge de la PR, le workflow pose le label `developped` + un commentaire sur
