@@ -90,7 +90,7 @@ def test_analyze_during_puzzle_shows_banner_on_the_puzzle_only():
     pgid = server.start_puzzle(server.PUZZLES[0]["PuzzleId"])["game_id"]
     aid = server.new_analysis_board()["game_id"]
     server.play_move(aid, "e4", color="white")
-    r = server.analyze_game(aid, depth=3, publish=False)
+    r = server.analyze_game(aid, depth=3, publish=False, wait=True)
     assert r["cheat_detected"] is True
     assert pgid in r["cheat_alert"]["while_in_progress"]
     assert _web(pgid)["cheat_detected"] is True

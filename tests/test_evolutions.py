@@ -89,7 +89,7 @@ def test_analyze_game_pgn_headers_complete():
     gid = server.new_game(white="Nicolas", black="Agent IA")["game_id"]
     for uci, color in (("f2f3", "white"), ("e7e5", "black"), ("g2g4", "white"), ("d8h4", "black")):
         server.play_move(gid, uci, color=color)
-    r = server.analyze_game(gid, depth=6, publish=False)
+    r = server.analyze_game(gid, depth=6, publish=False, wait=True)
     pgn = r["pgn"]
     assert '[White "Nicolas"]' in pgn
     assert '[Black "Agent IA"]' in pgn
@@ -103,7 +103,7 @@ def test_analyze_game_pgn_result_on_resign():
     server.play_move(gid, "e4", color="white")
     server.play_move(gid, "e5", color="black")
     server.resign(gid, color="black")
-    r = server.analyze_game(gid, depth=5, publish=False)
+    r = server.analyze_game(gid, depth=5, publish=False, wait=True)
     assert '[Result "1-0"]' in r["pgn"]  # les noirs ont abandonné
     assert '[White "A"]' in r["pgn"]
     assert '[Black "B"]' in r["pgn"]

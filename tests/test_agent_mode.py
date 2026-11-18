@@ -117,7 +117,7 @@ def test_analyze_game():
     gid = server.new_game(white="A", black="B")["game_id"]
     for uci, color in (("f2f3", "white"), ("e7e5", "black"), ("g2g4", "white"), ("d8h4", "black")):
         server.play_move(gid, uci, color=color)
-    r = server.analyze_game(gid, depth=10)
+    r = server.analyze_game(gid, depth=10, wait=True)
     assert r["summary"]["moves"] == 4
     assert "[%eval" in r["pgn"]
     assert r["critical"], "le mat du berger devrait générer des coups critiques"
@@ -189,7 +189,7 @@ def test_analyze_game_publishes_to_web():
     gid = server.new_game(white="A", black="B")["game_id"]
     for uci, color in (("f2f3", "white"), ("e7e5", "black"), ("g2g4", "white"), ("d8h4", "black")):
         server.play_move(gid, uci, color=color)
-    r = server.analyze_game(gid, depth=10)
+    r = server.analyze_game(gid, depth=10, wait=True)
     assert r["published"] is True
     assert len(r["evals"]) == 4
     assert all("eval_white" in e for e in r["evals"])
@@ -205,7 +205,7 @@ def test_analyze_game_publishes_to_web():
 def test_analyze_game_no_publish():
     gid = server.new_game(white="A", black="B")["game_id"]
     server.play_move(gid, "e4", color="white")
-    r = server.analyze_game(gid, depth=8, publish=False)
+    r = server.analyze_game(gid, depth=8, publish=False, wait=True)
     assert "published" not in r
     assert server.GAMES[gid].get("analysis") is None
 
@@ -216,7 +216,7 @@ def test_analysis_provides_pv():
     gid = server.new_game(white="A", black="B")["game_id"]
     server.play_move(gid, "e4", color="white")
     server.play_move(gid, "d5", color="black")
-    r = server.analyze_game(gid, depth=10)
+    r = server.analyze_game(gid, depth=10, wait=True)
     for e in r["evals"]:
         assert "pv_san" in e
         assert isinstance(e["pv_san"], list)
@@ -281,7 +281,7 @@ def test_analyze_game_on_analysis_board_with_fen():
     gid = server.new_analysis_board(fen)["game_id"]
     server.play_move(gid, "O-O", color="white")
     server.play_move(gid, "a6", color="black")
-    r = server.analyze_game(gid, depth=10)
+    r = server.analyze_game(gid, depth=10, wait=True)
     assert r["published"] is True
     assert len(r["evals"]) == 2
     assert r["evals"][0]["san"] == "O-O"

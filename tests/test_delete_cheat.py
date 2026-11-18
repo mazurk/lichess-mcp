@@ -94,13 +94,13 @@ def test_delete_unknown_game_rejected():
 def test_analyze_in_progress_game_flags_cheat():
     gid = server.new_game(white="A", black="B")["game_id"]
     server.play_move(gid, "e4", color="white")
-    r = server.analyze_game(gid, depth=3, publish=False)
+    r = server.analyze_game(gid, depth=3, publish=False, wait=True)
     assert r["cheat_detected"] is True
     assert r["cheat_alert"]["analyzed"] == gid
     assert gid in r["cheat_alert"]["while_in_progress"]
     assert len(server.CHEAT_ALERTS) == 1
     # tout appel tant que la partie est en cours : nouvelle alerte à chaque fois
-    r2 = server.analyze_game(gid, depth=3, publish=False)
+    r2 = server.analyze_game(gid, depth=3, publish=False, wait=True)
     assert r2["cheat_detected"] is True
     assert len(server.CHEAT_ALERTS) == 2
 
@@ -112,7 +112,7 @@ def test_analyze_other_board_while_game_in_progress_still_flags_cheat():
     server.play_move(gid, "e4", color="white")
     aid = server.new_analysis_board()["game_id"]
     server.play_move(aid, "e4", color="white")
-    r = server.analyze_game(aid, depth=3, publish=False)
+    r = server.analyze_game(aid, depth=3, publish=False, wait=True)
     assert r["cheat_detected"] is True
     alert = server.CHEAT_ALERTS[-1]
     assert alert["analyzed"] == aid          # échiquier analysé...
@@ -126,7 +126,7 @@ def test_analyze_while_puzzle_in_progress_flags_cheat():
     pgid = server.start_puzzle(pid)["game_id"]
     aid = server.new_analysis_board()["game_id"]
     server.play_move(aid, "d4", color="white")
-    r = server.analyze_game(aid, depth=3, publish=False)
+    r = server.analyze_game(aid, depth=3, publish=False, wait=True)
     assert r["cheat_detected"] is True
     assert pgid in server.CHEAT_ALERTS[-1]["while_in_progress"]
 
@@ -137,20 +137,20 @@ def test_analysis_done_before_game_start_is_not_cheating():
     pendant la partie ne lève PAS d'alerte (l'analyse préexistait)."""
     aid = server.new_analysis_board()["game_id"]
     server.play_move(aid, "e4", color="white")
-    r1 = server.analyze_game(aid, depth=3, publish=False)  # avant toute partie
+    r1 = server.analyze_game(aid, depth=3, publish=False, wait=True)  # avant toute partie
     assert r1["cheat_detected"] is False
     assert server.CHEAT_ALERTS == []
     # une partie démarre ensuite
     gid = server.new_game(white="A", black="B")["game_id"]
     server.play_move(gid, "e4", color="white")
     # ré-analyser le même board pendant la partie : analyse préexistante -> pas d'alerte
-    r2 = server.analyze_game(aid, depth=3, publish=False)
+    r2 = server.analyze_game(aid, depth=3, publish=False, wait=True)
     assert r2["cheat_detected"] is False
     assert server.CHEAT_ALERTS == []
     # mais analyser un board SANS analyse préalable pendant la partie -> alerte
     aid2 = server.new_analysis_board()["game_id"]
     server.play_move(aid2, "d4", color="white")
-    r3 = server.analyze_game(aid2, depth=3, publish=False)
+    r3 = server.analyze_game(aid2, depth=3, publish=False, wait=True)
     assert r3["cheat_detected"] is True
     assert gid in server.CHEAT_ALERTS[-1]["while_in_progress"]
 
@@ -159,7 +159,7 @@ def test_analysis_done_before_game_start_is_not_cheating():
 def test_no_cheat_alert_without_game_or_puzzle_in_progress():
     aid = server.new_analysis_board()["game_id"]
     server.play_move(aid, "e4", color="white")
-    r = server.analyze_game(aid, depth=3, publish=False)
+    r = server.analyze_game(aid, depth=3, publish=False, wait=True)
     assert r["cheat_detected"] is False
     assert "cheat_alert" not in r
     assert server.CHEAT_ALERTS == []
@@ -170,7 +170,7 @@ def test_no_new_cheat_alert_once_game_is_over():
     gid = server.new_game(white="A", black="B")["game_id"]
     server.play_move(gid, "e4", color="white")
     server.resign(gid, color="black")  # partie terminée : plus « en cours »
-    r = server.analyze_game(gid, depth=3, publish=False)
+    r = server.analyze_game(gid, depth=3, publish=False, wait=True)
     assert r["cheat_detected"] is False
     assert server.CHEAT_ALERTS == []
 
