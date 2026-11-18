@@ -166,3 +166,57 @@ def test_get_moves_analysis_board_custom_fen_san_correct():
     r = server.get_moves(gid)
     assert r["moves"] == ["Ncxd5"]
     assert r["uci"] == ["c7d5"]
+
+
+# ------------------------------------------------- régression issue #71
+# Constaté le 2026-11-16 : game_status restait over:false indéfiniment après
+# la fin de partie, alors que get_board/wait_for_turn voyaient la fin.
+# Le fix (détection centralisée dans _is_over) est en place ; ces tests
+# verrouillent le comportement, y compris quand game_status est le PREMIER
+# appel de lecture après la fin.
+
+def test_game_status_flips_after_flag_as_first_read_call():
+    """Issue #71 : game_status, appelé seul (aucun wait_for_turn avant),
+    doit basculer over:true dès le 1er appel après la chute du drapeau."""
+    gid = _clock_game_black_to_move()
+    _black_flag_falls(gid)
+    for _ in range(3):  # appel après appel, comme dans le ticket
+        s = server.game_status(gid)
+        assert s["over"] is True
+        assert s["turn"] == "black"
+        assert "gagne au drapeau" in s["result"]
+        assert s["winner"] == {"name": "A", "color": "white"}
+
+
+def test_game_status_over_after_resign_and_mate():
+    """Issue #71 : idem après abandon et après mat."""
+    gid = server.new_game(white="A", black="B")["game_id"]
+    server.join_game(gid, "A", color="white")
+    server.join_game(gid, "B", color="black")
+    server.resign(gid, color="black", player="B")
+    s = server.game_status(gid)
+    assert s["over"] is True and "abandonne" in s["result"]
+    assert s["winner"] == {"name": "A", "color": "white"}
+
+    gid2 = server.new_game(white="A", black="B")["game_id"]
+    server.join_game(gid2, "A", color="white")
+    server.join_game(gid2, "B", color="black")
+    for mv, c, p in [("f3", "white", "A"), ("e5", "black", "B"),
+                     ("g4", "white", "A"), ("Qh4#", "black", "B")]:
+        server.play_move(gid2, mv, color=c, player=p)
+    s = server.game_status(gid2)
+    assert s["over"] is True and "Mat" in s["result"]
+    assert s["winner"] == {"name": "B", "color": "black"}
+
+
+def test_wait_for_turn_game_over_guard_even_when_target_already_to_move():
+    """Issue #71 (point connexe) : wait_for_turn(camp) qui a DÉJÀ le trait
+    doit quand même signaler la partie finie (garde over avant ready)."""
+    gid = server.new_game(white="A", black="B")["game_id"]
+    server.join_game(gid, "A", color="white")
+    server.join_game(gid, "B", color="black")
+    server.resign(gid, color="black", player="B")  # partie finie, trait = white
+    r = server.wait_for_turn(gid, color="white", timeout_seconds=1)
+    assert r["ready"] is False
+    assert "abandonne" in r["game_over"]
+    assert r["winner"] == {"name": "A", "color": "white"}
