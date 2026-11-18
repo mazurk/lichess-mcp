@@ -661,6 +661,18 @@ async function refreshGameList() {
     select.value = previous;
   }
 }
+// Badge de version en coin haut gauche (issue #67) : permet de valider
+// rapidement quelle version est déployée sur le serveur (Pi en production).
+async function loadVersionBadge() {
+  try {
+    const v = await api("/web/api/version");
+    const el = document.getElementById("versionBadge");
+    el.textContent = "v" + v.version + (v.commit ? " (" + v.commit + ")" : "");
+    el.title = "Version déployée : v" + v.version + " — commit " + (v.commit || "inconnu");
+  } catch (e) { /* badge discret : ne jamais bloquer l'UI */ }
+}
+
 document.getElementById("modeSelect").onchange = updateMode;
 refreshGameList().catch(() => {});
 updateMode();
+loadVersionBadge();

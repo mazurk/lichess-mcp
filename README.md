@@ -110,6 +110,14 @@ http://127.0.0.1:8000/            # page du plateau (locale)
 https://votre-domaine/              # idem derrière Caddy (déploiement public)
 ```
 
+La **version du logiciel déployé** est affichée en permanence dans le **coin
+haut gauche** de la page — pratique pour vérifier d'un coup quelle version
+tourne en production. Numérotation **`0.XX`** (incrémentée à chaque livraison sur
+`main`), affichée avec le commit git court injecté au build :
+`GET /web/api/version` retourne `{"version": "0.01", "commit": "…"}` ; la version
+est aussi dans le `serverInfo` de la réponse MCP `initialize` (`__version__` dans
+`server.py`, synchronisé avec `package.json`).
+
 La page permet de créer une partie (contre le moteur ou partie libre, avec
 les noms des joueurs), de la rejoindre par son identifiant — ou de la regarder
 en **mode spectateur** (case à cocher) —, de consulter les parties analysées

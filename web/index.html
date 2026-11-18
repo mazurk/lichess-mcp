@@ -61,6 +61,11 @@
            background: #3d3a37; color: #ddd; margin-right: 4px; }
   .badge.live { color: #8ca64c; }
   .badge.over { color: #d34f5a; }
+  /* Version du logiciel déployé, en coin haut gauche (issue #67) */
+  #versionBadge { position: fixed; top: 8px; left: 8px; z-index: 10;
+                  background: var(--panel); border: 1px solid #4d4b47; color: #999;
+                  font-size: 11px; font-family: ui-monospace, monospace;
+                  padding: 2px 8px; border-radius: 10px; user-select: none; }
   .badge.analysed { color: #7fb0d8; }
   .badge.spectators { color: #c9b8ff; }
   .badge.browsing { color: #e8a33d; }
@@ -95,6 +100,7 @@
 </style>
 </head>
 <body>
+<div id="versionBadge" title="Version du serveur déployé">v…</div>
 <div class="app">
   <div class="board-wrap">
     <div class="board-label" id="labelTop"></div>
