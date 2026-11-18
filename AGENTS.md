@@ -4,11 +4,12 @@ Ce fichier décrit la procédure à suivre **à chaque évolution demandée**, s
 avoir besoin de la répéter.
 
 **Principe clé : le serveur tourne en parallèle du travail.** Le serveur exposé
-(https://mazurkiewicz1.zapto.org) tourne depuis `DELIVERY/` — un snapshot figé
-copié dans l'image Docker au build — et **jamais** depuis ce dépôt de travail.
-On peut donc travailler ici en parallèle (branches, tests, éditions, PR) sans
-affecter le serveur en cours ; seuls les tests locaux (pytest, ruff, node)
-tournent à côté, sur des ports/processus indépendants.
+(https://mazurkiewicz1.zapto.org) tourne sur la **Raspberry Pi** (`~/lichess-mcp`
+sur `nicolas@192.168.2.3`, déployé par `docker compose up -d --build` après chaque
+merge — voir §6) et **jamais** depuis ce dépôt de travail. On peut donc travailler
+ici en parallèle (branches, tests, éditions, PR) sans affecter le serveur en cours ;
+seuls les tests locaux (pytest, ruff, node) tournent à côté, sur des
+ports/processus indépendants.
 
 ## 1. Branche dédiée
 
@@ -65,43 +66,43 @@ Co-Authored-By: Mistral Vibe <vibe@mistral.ai>
    à la main). En local, supprimer la branche fusionnée :
    `git checkout main && git pull --ff-only origin main && git branch -D <branche>`.
 
-## 6. Livraison dans DELIVERY, puis post-merge depuis ce dossier
+## 6. Déploiement sur la Raspberry Pi (production)
 
 Après le merge dans `main` :
 
-1. Mettre le dossier local à jour :
+1. Mettre le dépôt local à jour :
    `git checkout main && git pull --ff-only origin main`
-2. **Livrer le travail dans le dossier local `DELIVERY/`** (à la racine du
-   dépôt, **hors git** : il est listé dans `.gitignore`). Copie du tree mergé
-   (`.env` et `Caddyfile` inclus — ils sont hors git mais requis par compose),
-   sans `.git`, `.venv`, caches ni notes non commitées :
+2. **Déployer sur la Pi** — le serveur exposé
+   (https://mazurkiewicz1.zapto.org) tourne là-bas, pas depuis ce dépôt :
 
-   ```bash
-   rsync -a --exclude .git --exclude .venv --exclude DELIVERY --exclude data \
-     --exclude __pycache__ --exclude .pytest_cache --exclude .ruff_cache \
-     --exclude node_modules --exclude prompt.txt ./ DELIVERY/
-   ```
+   - **Prérequis une fois pour toutes sur la Pi** : `sudo usermod -aG docker
+     nicolas` (puis re-login SSH) pour utiliser le socket Docker sans mot de
+     passe. Docker + Compose y sont déjà installés (dockerd actif, Caddy
+     écoute 80/443).
+   - Le **clone de production** vit dans `~/lichess-mcp` sur la Pi
+     (`ssh -i ~/.ssh/id_ed25519_pi nicolas@192.168.2.3`) ; `.env` et
+     `Caddyfile` y sont hors git, donc préservés par le pull ; `data/` vit dans
+     le volume Docker `games_data`.
+   - Commandes de déploiement :
 
-   (`data/` = état persisté des parties, hors git ; en production il vit dans
-   le volume Docker `games_data`, pas dans le dossier.)
+     ```bash
+     ssh -i ~/.ssh/id_ed25519_pi nicolas@192.168.2.3 \
+       'cd ~/lichess-mcp && git checkout -- . && git pull --ff-only origin main && docker compose up -d --build'
+     ```
 
-3. **Se placer dans `DELIVERY` pour toutes les actions post-merge** — recharger
-   le serveur depuis la livraison **sans `down` préalable** : `up -d --build`
-   recrée uniquement le conteneur app (image rebuildée), Caddy étant inchangé
-   reste up et les ports 80/443 ne sont jamais libérés. Le nom de projet est
-   figé (`name: lichess-mcp` dans `docker-compose.yml`) : quel que soit le
-   dossier d'où part la commande (dépôt ou `DELIVERY/`), c'est toujours le
-   même projet qui est géré — aucun `-p` nécessaire, aucun projet parasite :
+     `git checkout -- .` écarte d'éventuels patches locaux non commités sur le
+     clone de production (volontairement non versionnés) pour garantir un
+     `pull --ff-only` propre. `up -d --build` recrée **uniquement** le conteneur
+     app (image rebuildée) : Caddy étant inchangé reste up et les ports 80/443
+     ne sont jamais libérés. Le nom de projet est figé (`name: lichess-mcp` dans
+     `docker-compose.yml`), aucun `-p` nécessaire.
 
-   ```bash
-   cd DELIVERY
-   docker compose up -d --build
-   # ouvrir Edge sur https://mazurkiewicz1.zapto.org
-   ```
+3. Vérifier que le site répond (**HTTPS 200** sur
+   https://mazurkiewicz1.zapto.org) et faire un smoke test rapide si pertinent.
 
-Vérifier que le site répond (HTTPS 200) et faire un smoke test rapide si pertinent.
 Le serveur n'est donc indisponible que quelques secondes (recréation du
-conteneur app), jamais pendant le travail dans le dépôt principal.
+conteneur app), jamais pendant le travail dans le dépôt principal. Le dossier
+`DELIVERY/` n'est plus utilisé pour le déploiement.
 
 ## 7. Nettoyage après smoke test — règle absolue
 
