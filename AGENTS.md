@@ -67,6 +67,18 @@ Co-Authored-By: Mistral Vibe <vibe@mistral.ai>
    automatiquement au merge** (plus besoin de nettoyer les anciennes branches
    à la main). En local, supprimer la branche fusionnée :
    `git checkout main && git pull --ff-only origin main && git branch -D <branche>`.
+5. **Cycle de vie des issues — 3 états** :
+   - **open** : issue créée ;
+   - **developped** : issue corrigée, validée par moi et mergée dans `main` —
+     le label `developped` est posé **automatiquement** au merge par
+     `.github/workflows/label-developped.yml` (déclenché sur `pull_request:
+     closed` quand la PR est mergée) ; **l'issue reste ouverte**, jamais
+     fermée automatiquement ;
+   - **closed** : issue **validée par Nicolas** (fermeture manuelle).
+   Pratique : après un merge, je ne ferme **aucune** issue moi-même — je
+   vérifie seulement que le label `developped` est bien posé (et le pose via
+   l'API si le workflow a manqué l'issue). C'est Nicolas qui ferme (`closed`)
+   après validation.
 
 ## 6. Déploiement sur la Raspberry Pi (production)
 
