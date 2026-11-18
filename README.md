@@ -25,6 +25,10 @@ format Lichess (FEN + coups UCI).
   meilleur coup à chaque erreur. `analyze_game` **publie** aussi l'analyse sur
   l'interface web (`publish=True`, défaut) : jauge d'évaluation par coup et
   coups gaffés colorés pour le debrief.
+  Côté perf : chaque position n'est analysée qu'une seule fois (le résultat du
+  coup précédent est réutilisé), et Stockfish tourne en **mono-thread si
+  `depth <= 10`**, multi-cœurs (`min(cœurs, 4)`) au-delà — l'overhead des
+  threads coûte plus cher que le calcul à faible profondeur.
 - **Règles complètes** gérées par [python-chess](https://github.com/niklasf/python-chess) :
   promotion, prise en passant, roc, pat, règle des 50 coups, répétition triple.
 - **Puzzles** au format Lichess : mats en un ou deux coups à résoudre via

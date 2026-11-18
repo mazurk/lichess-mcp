@@ -53,7 +53,8 @@ class Engine:
 
         depth = {"easy": 4, "medium": 8, "hard": 12}[self.level]
         with chess.engine.SimpleEngine.popen_uci(self._stockfish) as eng:
-            eng.configure(engine_options())
+            # mono-thread si depth <= 10, multi-cœurs au-delà (issues #54/#63)
+            eng.configure(engine_options(depth))
             result = eng.play(board, chess.engine.Limit(depth=depth))
         if result.move in moves:
             return result.move
