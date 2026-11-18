@@ -51,7 +51,20 @@ def _build_auth() -> TokenVerifier | None:
     return StaticTokenVerifier(token) if token else None
 
 
-mcp = FastMCP("lichess-mcp", auth=_build_auth())
+# Version du logiciel, affichée dans le coin haut gauche de l'interface web
+# (badge #versionBadge) pour valider rapidement la version déployée.
+# Le commit court est injecté au build Docker (ARG GIT_COMMIT, voir Dockerfile
+# et AGENTS.md §6) et exposé via /web/api/version.
+__version__ = "0.01"
+
+
+def _git_commit() -> str | None:
+    """Commit git court du déploiement (build-arg GIT_COMMIT), sinon None."""
+    commit = os.environ.get("LICHESS_MCP_GIT_COMMIT", "").strip()
+    return commit or None
+
+
+mcp = FastMCP("lichess-mcp", version=__version__, auth=_build_auth())
 
 GAMES: dict[str, dict] = {}
 PUZZLES: list[dict] = json.loads(
@@ -1987,6 +2000,14 @@ async def web_pieces_js(request: Request) -> FileResponse:
         )
     return _secure_file_response(pieces, "application/javascript",
                                  cache_control="public, max-age=31536000, immutable")
+
+
+@mcp.custom_route("/web/api/version", methods=["GET"])
+async def web_version(request: Request) -> JSONResponse:
+    """Version du logiciel déployé (badge en coin haut gauche de l'UI web)."""
+    if not _web_authorized(request):
+        return JSONResponse({"error": "non autorisé"}, status_code=401)
+    return JSONResponse({"version": __version__, "commit": _git_commit()})
 
 
 @mcp.custom_route("/web/api/games", methods=["GET"])

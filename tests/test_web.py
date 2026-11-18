@@ -303,3 +303,35 @@ def test_web_puzzle_fields_in_list_and_state(client):
     state = client.get(f"/web/api/games/{gid}").json()
     assert state["puzzle"]["plies_done"] >= 1
     assert len(state["moves"]) >= 1
+
+
+def test_server_version_is_0xx_and_exposed_on_mcp():
+    """Numérotation 0.XX (XX sur 2 chiffres, incrémenté avant chaque livraison
+    sur main — voir AGENTS.md §5), propagée au serveur MCP (serverInfo)."""
+    import json
+    import re
+    from pathlib import Path
+    assert re.fullmatch(r"0\.\d{2}", server.__version__), server.__version__
+    assert server.mcp.version == server.__version__
+    # package.json reste synchronisé avec __version__
+    pkg = json.loads((Path(server.__file__).resolve().parent / "package.json").read_text(encoding="utf-8"))
+    assert pkg["version"] == server.__version__
+
+
+def test_web_api_version(client):
+    """GET /web/api/version -> {version, commit} (badge coin haut gauche, issue #67)."""
+    r = client.get("/web/api/version")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["version"] == server.__version__
+    assert "commit" in data  # None en test (pas de build-arg), renseigné en prod
+
+
+def test_web_api_version_requires_token_when_configured(client, monkeypatch):
+    """Avec LICHESS_MCP_AUTH_TOKEN configuré, /web/api/version exige le bearer."""
+    monkeypatch.setenv("LICHESS_MCP_AUTH_TOKEN", "secret-test")
+    r = client.get("/web/api/version")
+    assert r.status_code == 401
+    r = client.get("/web/api/version", headers={"Authorization": "Bearer secret-test"})
+    assert r.status_code == 200
+    assert r.json()["version"] == server.__version__

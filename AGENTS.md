@@ -56,6 +56,13 @@ Co-Authored-By: Mistral Vibe <vibe@mistral.ai>
 
 ## 5. Push, PR, CI, merge
 
+- **Numérotation `0.XX`** : la version du logiciel est `__version__` dans
+  `server.py` (synchronisée avec `package.json`), au format `0.XX` (XX sur 2
+  chiffres : 0.01, 0.02, … 0.10…). **Incrémenter XX avant chaque livraison sur
+  main** — c'est-à-dire dans la branche de la PR, avant le push — pour que la
+  version affichée dans le badge (coin haut gauche de l'UI web) et servie par
+  `/web/api/version` corresponde exactement au merge déployé sur la Pi.
+
 0. **Bug = issue d'abord** : si un bug est remonté (ou découvert en test) et
    qu'**aucune issue GitHub n'existe pour ce bug, la créer AVANT de commencer
    le correctif** (état `open`, titre explicite, description/repro). La branche
@@ -114,8 +121,10 @@ Après le merge dans `main` :
      ssh pi-mcp 'cd ~/lichess-mcp && git checkout -- .'
      # 2. pousser main vers le clone de production (met à jour son worktree)
      git push ssh://pi-mcp/home/nicolas/lichess-mcp main:main
-     # 3. rebuild du conteneur app sur la Pi
-     ssh pi-mcp 'cd ~/lichess-mcp && docker compose up -d --build'
+     # 3. rebuild du conteneur app sur la Pi — le commit courant est injecté
+     #    dans l'image (ARG GIT_COMMIT) et affiché dans le badge de version
+     #    en coin haut gauche de l'interface web (issue #67)
+     ssh pi-mcp 'cd ~/lichess-mcp && docker compose up -d --build --build-arg GIT_COMMIT=$(git rev-parse --short HEAD)'
      ```
 
      `up -d --build` recrée **uniquement** le conteneur app (image rebuildée) :

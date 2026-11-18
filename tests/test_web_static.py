@@ -73,3 +73,12 @@ def test_app_js_route_served(client):
 def test_index_has_no_inline_script():
     # CSP strict (script-src 'self') : le script doit être externe
     assert "<script>\n" not in HTML and "<script>\"" not in HTML
+
+
+def test_version_badge_present_in_page_and_js():
+    """Badge de version en coin haut gauche (issue #67) : élément + CSS dans
+    index.html, chargement via /web/api/version dans app.js."""
+    assert 'id="versionBadge"' in HTML
+    assert "#versionBadge" in HTML  # position: fixed, coin haut gauche
+    assert "/web/api/version" in APP_JS
+    assert "loadVersionBadge" in APP_JS
