@@ -77,25 +77,32 @@ Après le merge dans `main` :
 
    - **Prérequis une fois pour toutes sur la Pi** : `sudo usermod -aG docker
      nicolas` (puis re-login SSH) pour utiliser le socket Docker sans mot de
-     passe. Docker + Compose y sont déjà installés (dockerd actif, Caddy
-     écoute 80/443).
+     passe, et autoriser le push git sur la branche `main` du clone :
+     `git config receive.denyCurrentBranch updateInstead`.
+     Docker + Compose y sont déjà installés (dockerd actif, Caddy écoute 80/443).
    - Le **clone de production** vit dans `~/lichess-mcp` sur la Pi
      (`ssh -i ~/.ssh/id_ed25519_pi nicolas@192.168.2.3`) ; `.env` et
-     `Caddyfile` y sont hors git, donc préservés par le pull ; `data/` vit dans
-     le volume Docker `games_data`.
-   - Commandes de déploiement :
+     `Caddyfile` y sont hors git, donc jamais touchés par un push ; `data/`
+     vit dans le volume Docker `games_data`. La Pi n'a **pas** de credentials
+     GitHub : on pousse depuis ce dépôt via SSH.
+   - Commandes de déploiement, depuis ce dépôt (`main` à jour) :
 
      ```bash
+     # 1. sur la Pi : écarter les patches locaux non commités (volontairement
+     #    non versionnés) pour garantir un push propre
+     ssh -i ~/.ssh/id_ed25519_pi nicolas@192.168.2.3 'cd ~/lichess-mcp && git checkout -- .'
+     # 2. pousser main vers le clone de production (met à jour son worktree)
+     GIT_SSH_COMMAND="ssh -i ~/.ssh/id_ed25519_pi -o BatchMode=yes" \
+       git push ssh://nicolas@192.168.2.3/home/nicolas/lichess-mcp main:main
+     # 3. rebuild du conteneur app sur la Pi
      ssh -i ~/.ssh/id_ed25519_pi nicolas@192.168.2.3 \
-       'cd ~/lichess-mcp && git checkout -- . && git pull --ff-only origin main && docker compose up -d --build'
+       'cd ~/lichess-mcp && docker compose up -d --build'
      ```
 
-     `git checkout -- .` écarte d'éventuels patches locaux non commités sur le
-     clone de production (volontairement non versionnés) pour garantir un
-     `pull --ff-only` propre. `up -d --build` recrée **uniquement** le conteneur
-     app (image rebuildée) : Caddy étant inchangé reste up et les ports 80/443
-     ne sont jamais libérés. Le nom de projet est figé (`name: lichess-mcp` dans
-     `docker-compose.yml`), aucun `-p` nécessaire.
+     `up -d --build` recrée **uniquement** le conteneur app (image rebuildée) :
+     Caddy étant inchangé reste up et les ports 80/443 ne sont jamais libérés.
+     Le nom de projet est figé (`name: lichess-mcp` dans `docker-compose.yml`),
+     aucun `-p` nécessaire.
 
 3. Vérifier que le site répond (**HTTPS 200** sur
    https://mazurkiewicz1.zapto.org) et faire un smoke test rapide si pertinent.
