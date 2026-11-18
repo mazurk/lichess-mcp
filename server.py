@@ -56,6 +56,26 @@ GAMES: dict[str, dict] = {}
 PUZZLES: list[dict] = json.loads(
     (Path(__file__).parent / "puzzles.json").read_text(encoding="utf-8")
 )
+
+
+def _puzzle_source(puzzle_id: str) -> str:
+    """"lichess" (vrai puzzle importé) ou "generated" (généré localement).
+
+    Les puzzles générés portent un ID préfixé (mate1_*, mate2_*, backRank1,
+    scholar...) et un thème générique ; les vrais puzzles Lichess ont un ID
+    base36 (issue #53).
+    """
+    if "_" in puzzle_id or re.match(r"^(mate\d|backRank|scholar)\d*$", puzzle_id):
+        return "generated"
+    return "lichess"
+
+
+# tirage aléatoire : uniquement les vrais puzzles Lichess (issue #53) ;
+# les puzzles générés restent jouables via leur identifiant explicite.
+PUZZLES_LICHESS: list[dict] = [
+    p for p in PUZZLES if _puzzle_source(p["PuzzleId"]) == "lichess"
+]
+
 ACTIVE_PUZZLES: dict[str, dict] = {}
 # Alertes « triche détectée » : tout appel à analyze_game effectué alors
 # qu'une partie ou un puzzle est en cours y est enregistré (alerte globale,
@@ -1197,6 +1217,32 @@ def delete_game(game_id: str) -> dict:
     }
 
 
+def _has_mate_in_one(board: chess.Board) -> bool:
+    """Le camp au trait peut-il mater en un coup ?"""
+    for move in board.legal_moves:
+        board.push(move)
+        mate = board.is_checkmate()
+        board.pop()
+        if mate:
+            return True
+    return False
+
+
+def _forced_mate_in_two_after(board: chess.Board) -> bool:
+    """Position avec l'adversaire au trait : est-il mat FORCÉ en deux coups
+    (chaque réponse adverse permet un mat en un) ? — issue #52 : accepter
+    les coups clés alternatifs, pas seulement la ligne du catalogue."""
+    if board.is_checkmate():
+        return True  # coup "clé" déjà mat : encore mieux
+    for reply in list(board.legal_moves):
+        board.push(reply)
+        mateable = _has_mate_in_one(board)
+        board.pop()
+        if not mateable:
+            return False
+    return True
+
+
 def _start_puzzle(puzzle: dict) -> dict:
     """Initialise une session de puzzle (état multi-coups pour les mats en 2)."""
     board = chess.Board(puzzle["FEN"])
@@ -1234,7 +1280,7 @@ def next_puzzle() -> dict:
     Pour un mat en 2, jouez le coup clé avec try_puzzle_move : la réponse
     de l'adversaire est jouée automatiquement, puis trouvez le coup de mat.
     """
-    puzzle = random.choice(PUZZLES)
+    puzzle = random.choice(PUZZLES_LICHESS)
     session = _start_puzzle(puzzle)
     board = session["board"]
     mate_in = puzzle.get("MateIn", 1)
@@ -1245,6 +1291,7 @@ def next_puzzle() -> dict:
     return {
         "puzzle_id": puzzle["PuzzleId"],
         "theme": puzzle["Theme"],
+        "source": _puzzle_source(puzzle["PuzzleId"]),
         "mate_in": mate_in,
         "board": _board_str(board),
         "fen": puzzle["FEN"],
@@ -1270,6 +1317,7 @@ def list_puzzles(mate_in: int | None = None) -> dict:
         {
             "puzzle_id": p["PuzzleId"],
             "theme": p.get("Theme", ""),
+            "source": _puzzle_source(p["PuzzleId"]),
             "mate_in": p.get("MateIn", 1),
         }
         for p in PUZZLES
@@ -1300,7 +1348,10 @@ def start_puzzle(puzzle_id: str | None = None,
         if puzzle is None:
             raise ValueError(f"Puzzle inconnu : {puzzle_id}")
     else:
-        puzzle = random.choice(PUZZLES)
+        # tirage limité aux vrais puzzles Lichess (issue #53) : les puzzles
+        # générés (thèmes génériques, positions parfois dégénérées) restent
+        # jouables via list_puzzles + start_puzzle(puzzle_id=...).
+        puzzle = random.choice(PUZZLES_LICHESS)
     board = chess.Board(puzzle["FEN"])
     label = (name or f"Puzzle {puzzle['PuzzleId']}").strip()
     game_id = _create_game("Blancs", "Noirs", "medium", None,
@@ -1318,6 +1369,7 @@ def start_puzzle(puzzle_id: str | None = None,
         "game_id": game_id,
         "puzzle_id": puzzle["PuzzleId"],
         "theme": puzzle["Theme"],
+        "source": _puzzle_source(puzzle["PuzzleId"]),
         "mate_in": mate_in,
         "board": _board_str(game["board"]),
         "fen": puzzle["FEN"],
@@ -1326,6 +1378,77 @@ def start_puzzle(puzzle_id: str | None = None,
         "note": "Puzzle publié : l'interface web peut l'observer (mode "
                  "Puzzles). Jouez avec try_puzzle_move(..., game_id=...).",
     }
+
+
+@mcp.tool()
+def share_puzzle(puzzle_id: str, name: str | None = None) -> dict:
+    """Partage un puzzle : crée un échiquier d'analyse consultable (issue #51).
+
+    Contrairement à start_puzzle (échiquier de progression où l'agent joue
+    via try_puzzle_move), ce board d'analyse est libre : le spectateur
+    consulte la position du puzzle sur l'interface web (mode Consulter) en
+    donnant simplement l'identifiant retourné. La solution (ligne UCI + SAN)
+    est incluse dans la réponse de l'outil — visible de l'agent, pas du board.
+
+    Args:
+        puzzle_id: identifiant du puzzle (voir list_puzzles).
+        name: nom lisible du board partagé (défaut : "Puzzle <id>").
+    """
+    puzzle = next((p for p in PUZZLES if p["PuzzleId"] == puzzle_id), None)
+    if puzzle is None:
+        raise ValueError(f"Puzzle inconnu : {puzzle_id}")
+    board = chess.Board(puzzle["FEN"])
+    label = (name or f"Puzzle {puzzle_id}").strip()
+    game_id = _create_game("Blancs", "Noirs", "medium", None,
+                           kind="analysis", board=board, name=label)
+    _persist()
+    # solution en SAN (lisible) en plus de la ligne UCI du catalogue
+    replay = board.copy(stack=False)
+    san_line = []
+    for uci in puzzle["Moves"].split():
+        mv = chess.Move.from_uci(uci)
+        if mv not in replay.legal_moves:
+            break
+        san_line.append(replay.san(mv))
+        replay.push(mv)
+    return {
+        "game_id": game_id,
+        "name": label,
+        "puzzle_id": puzzle_id,
+        "theme": puzzle.get("Theme", ""),
+        "mate_in": puzzle.get("MateIn", 1),
+        "fen": puzzle["FEN"],
+        "solution_uci": puzzle["Moves"],
+        "solution_san": " ".join(san_line),
+        "note": "Échiquier partagé : donnez game_id à consulter sur le web "
+                "(mode Consulter). La solution n'est PAS jouée sur le board.",
+    }
+
+
+def _last_san(board: chess.Board) -> str:
+    """SAN du dernier coup joué (déjà poussé sur le plateau)."""
+    last = board.peek()
+    board.pop()
+    try:
+        return board.san(last)
+    finally:
+        board.push(last)
+
+
+def _is_alternative_solution(board: chess.Board, parsed: chess.Move,
+                             puzzle: dict, plies_done: int) -> bool:
+    """Issue #52 : solution alternative à la ligne du catalogue.
+
+    Accepté si le coup MAT directement (ex. mate2_177 : Qh8# ou Qh2#),
+    ou si c'est un coup clé de mat en 2 débutant qui garde le mat FORCÉ
+    (toutes les réponses adverses se font mater en un coup).
+    """
+    probe = board.copy(stack=False)
+    probe.push(parsed)
+    if probe.is_checkmate():
+        return True
+    return (bool(puzzle.get("MateIn", 1) == 2 and plies_done == 0
+                 and _forced_mate_in_two_after(probe)))
 
 
 @mcp.tool()
@@ -1371,23 +1494,57 @@ def try_puzzle_move(puzzle_id: str, move: str,
     if parsed is None or parsed not in board.legal_moves:
         return {"correct": False, "note": f"Coup invalide ou illégal : {move}"}
 
-    if parsed.uci() != line[plies_done]:
-        mate_in = puzzle.get("MateIn", 1)
-        hint = ("Cherchez un mat en un coup."
-                if mate_in == 1 else "Cherchez le coup clé du mat en 2.")
+    mate_in = puzzle.get("MateIn", 1)
+    matches_line = parsed.uci() == line[plies_done]
+    alternative = (not matches_line
+                   and _is_alternative_solution(board, parsed, puzzle, plies_done))
+    if (not matches_line) and not alternative:
+        # refus explicite : rappeler la réponse adverse déjà jouée pour
+        # éviter les essais à l'aveugle (issue #52, mate2_090)
+        note = f"{board.san(parsed)} n'est pas la solution. Réessayez."
+        if board.move_stack and mate_in == 2 and plies_done % 2 == 0:
+            note += (f" (rappel : l'adversaire a joué {_last_san(board)} "
+                     "— cherchez le mat.)")
         return {
             "correct": False,
-            "note": f"{board.san(parsed)} n'est pas la solution. Réessayez.",
-            "hint": hint,
+            "note": note,
+            "hint": ("Cherchez un mat en un coup."
+                     if mate_in == 1 or plies_done > 0
+                     else "Cherchez le coup clé du mat en 2."),
         }
 
     san = board.san(parsed)
     board.push(parsed)
+    if board.is_checkmate() or plies_done + 1 >= len(line):
+        # mat effectif (ligne du catalogue ou variante matante)
+        session["plies_done"] = plies_done + 1
+        session["solved"] = True
+        _persist()
+        if board.is_checkmate():
+            return {
+                "correct": True,
+                "solved": True,
+                "note": f"Bravo ! {san} — mat en {mate_in} trouvé "
+                        f"({puzzle['Theme']})"
+                        + (" (variante acceptée)" if alternative else "") + ".",
+            }
+        # fin de ligne du catalogue sans mat réel (puzzle généré dégénéré)
+        return {
+            "correct": True,
+            "solved": True,
+            "note": f"{san} — ligne du puzzle complétée ({puzzle['Theme']}).",
+        }
+
     plies_done += 1
 
     # réponse de l'adversaire : jouée automatiquement
     if plies_done < len(line) and plies_done % 2 == 1:
         reply = chess.Move.from_uci(line[plies_done])
+        if reply not in board.legal_moves:
+            # coup clé alternatif : la réponse du catalogue peut être illégale
+            # ici — l'adversaire joue alors sa première défense légale
+            # (issue #52).
+            reply = sorted(board.legal_moves, key=lambda m: m.uci())[0]
         reply_san = board.san(reply)
         board.push(reply)
         plies_done += 1
