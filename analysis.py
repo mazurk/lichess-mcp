@@ -29,6 +29,28 @@ STOCKFISH_CANDIDATES = [
 ]
 
 
+def engine_options() -> dict:
+    """Options UCI de Stockfish : Threads et Hash (issue #54).
+
+    Par défaut, le process démarre avec 1 seul thread — sur une machine
+    multi-cœur (ex. Raspberry Pi 4 cœurs), l'analyse était ~3x plus lente que
+    nécessaire. Threads = min(cœurs, 4) par défaut, Hash = 256 Mo ;
+    surcharge possible via LICHESS_MCP_STOCKFISH_THREADS / _HASH.
+    """
+    def env_int(name: str, default: int) -> int:
+        raw = os.environ.get(name, "").strip()
+        try:
+            return max(1, int(raw)) if raw else default
+        except ValueError:
+            return default
+
+    cpus = os.cpu_count() or 1
+    return {
+        "Threads": env_int("LICHESS_MCP_STOCKFISH_THREADS", min(cpus, 4)),
+        "Hash": env_int("LICHESS_MCP_STOCKFISH_HASH", 256),
+    }
+
+
 def stockfish_path() -> str | None:
     env_path = os.environ.get("LICHESS_MCP_STOCKFISH", "").strip()
     if env_path:
@@ -161,6 +183,8 @@ def analyze_moves(moves: list[chess.Move], depth: int = 15,
     errors_white = errors_black = 0
 
     with chess.engine.SimpleEngine.popen_uci(path) as engine:
+        # Threads/Hash dès le spawn, avant tout go depth (issue #54).
+        engine.configure(engine_options())
         for i, move in enumerate(moves):
             mover = board.turn
             info = engine.analyse(board, chess.engine.Limit(depth=depth))

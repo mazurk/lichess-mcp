@@ -49,8 +49,11 @@ class Engine:
     def _stockfish_move(self, board: chess.Board, moves: list[chess.Move]) -> chess.Move:
         import chess.engine
 
+        from analysis import engine_options  # Threads/Hash (issue #54)
+
         depth = {"easy": 4, "medium": 8, "hard": 12}[self.level]
         with chess.engine.SimpleEngine.popen_uci(self._stockfish) as eng:
+            eng.configure(engine_options())
             result = eng.play(board, chess.engine.Limit(depth=depth))
         if result.move in moves:
             return result.move

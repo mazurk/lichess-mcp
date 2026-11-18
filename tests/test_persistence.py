@@ -206,3 +206,28 @@ def test_state_file_is_atomic_and_versioned(tmp_path):
     g = state["games"][0]
     assert "root_fen" in g and "moves" in g and g["kind"] == "game"
     assert not path.with_name(path.name + ".tmp").exists()  # tmp nettoyé par os.replace
+
+
+def test_persist_concurrent_no_error(tmp_path, monkeypatch):
+    """Régression issue #55 : des _persist concurrents ne doivent plus lever
+    d'Errno 2 (course sur le fichier .tmp), même en 7 appels parallèles."""
+    import threading
+
+    server.GAMES.clear()
+    for i in range(30):
+        server.new_game(white=f"W{i}", black=f"B{i}")
+    errors = []
+
+    def run():
+        try:
+            for _ in range(5):
+                server._persist()
+        except OSError as exc:  # pragma: no cover
+            errors.append(exc)
+
+    threads = [threading.Thread(target=run) for _ in range(7)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert not errors, errors

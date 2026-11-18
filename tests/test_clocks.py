@@ -1,8 +1,14 @@
 """Tests des horloges de partie (10+0, drapeau, temps visibles)."""
 
+import shutil
+
 import pytest
 
 import server
+
+needs_stockfish = pytest.mark.skipif(
+    not shutil.which("stockfish"), reason="Stockfish non installé (CI l'a)."
+)
 
 
 @pytest.fixture(autouse=True)
@@ -213,6 +219,7 @@ def test_get_board_ply_clocks():
     assert server.get_board(gid2, ply=0)["ply_clocks"] is None
 
 
+@needs_stockfish
 def test_analyze_game_pgn_has_clk():
     """analyze_game : le PGN annoté contient [%clk H:MM:SS] après chaque coup."""
     gid = server.new_game(white="A", black="B", clock="10+0")["game_id"]
