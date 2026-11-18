@@ -59,10 +59,12 @@ https://chess.votre-domaine.tld/mcp
 
 ## 3 bis. Déploiement sur la Raspberry Pi (production mazurkiewicz1.zapto.org)
 
-Le serveur exposé publiquement tourne sur une **Raspberry Pi du LAN**
-(`nicolas@192.168.2.3`, clé SSH `~/.ssh/id_ed25519_pi`) : la box redirige les
-ports 80/443 vers la Pi, et Caddy (conteneur Docker) y sert le HTTPS Let's
-Encrypt. Docker + Compose y sont installés ; prérequis une fois pour toutes :
+Le serveur exposé publiquement tourne sur une **Raspberry Pi du LAN** : on y
+accède simplement par **`ssh pi-mcp`** (alias défini dans `~/.ssh/config` :
+HostName 192.168.2.3, User nicolas, IdentityFile `~/.ssh/id_ed25519_pi` —
+inutile de retenir l'IP ni l'utilisateur). La box redirige les ports 80/443
+vers la Pi, et Caddy (conteneur Docker) y sert le HTTPS Let's Encrypt.
+Docker + Compose y sont installés ; prérequis une fois pour toutes :
 `sudo usermod -aG docker nicolas` (puis re-login SSH) pour utiliser le socket
 Docker sans mot de passe.
 
@@ -74,12 +76,12 @@ pour toutes pour accepter le push sur `main`) :
 
 ```bash
 # 1. worktree propre sur la Pi (écarte les patches locaux non commités)
-ssh -i ~/.ssh/id_ed25519_pi nicolas@192.168.2.3 'cd ~/lichess-mcp && git checkout -- .'
+ssh pi-mcp 'cd ~/lichess-mcp && git checkout -- .'
 # 2. push de main vers le clone de production
-GIT_SSH_COMMAND="ssh -i ~/.ssh/id_ed25519_pi -o BatchMode=yes" \
-  git push ssh://nicolas@192.168.2.3/home/nicolas/lichess-mcp main:main
+ssh pi-mcp 'cd ~/lichess-mcp && git config receive.denyCurrentBranch'  # updateInstead, réglé 1x
+git push ssh://pi-mcp/home/nicolas/lichess-mcp main:main
 # 3. rebuild du conteneur app
-ssh -i ~/.ssh/id_ed25519_pi nicolas@192.168.2.3 'cd ~/lichess-mcp && docker compose up -d --build'
+ssh pi-mcp 'cd ~/lichess-mcp && docker compose up -d --build'
 # 4. vérification
 curl -s -o /dev/null -w "%{http_code}\n" https://mazurkiewicz1.zapto.org/   # attendu : 200
 ```
