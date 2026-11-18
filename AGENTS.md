@@ -56,6 +56,12 @@ Co-Authored-By: Mistral Vibe <vibe@mistral.ai>
 
 ## 5. Push, PR, CI, merge
 
+0. **Bug = issue d'abord** : si un bug est remonté (ou découvert en test) et
+   qu'**aucune issue GitHub n'existe pour ce bug, la créer AVANT de commencer
+   le correctif** (état `open`, titre explicite, description/repro). La branche
+   de fix et la PR référencent ensuite cette issue (`#N` dans le titre ou le
+   body de la PR) pour que le label `developped` soit posé automatiquement au
+   merge (voir étape 5 ci-dessous). Aucun correctif de bug sans issue préalable.
 1. Itérer en local jusqu'à ce que **tous les tests passent** et les sanitizers
    soient verts.
 2. Pousser la branche (`git push -u origin <branche>`) et ouvrir une **PR** vers
