@@ -55,7 +55,7 @@ def _build_auth() -> TokenVerifier | None:
 # (badge #versionBadge) pour valider rapidement la version déployée.
 # Le commit court est injecté au build Docker (ARG GIT_COMMIT, voir Dockerfile
 # et AGENTS.md §6) et exposé via /web/api/version.
-__version__ = "0.03"
+__version__ = "0.04"
 
 
 def _git_commit() -> str | None:
@@ -98,6 +98,14 @@ ACTIVE_PUZZLES: dict[str, dict] = {}
 # "failed" : le thread est mort avec le process).
 ANALYSIS_JOBS: dict[str, dict] = {}
 _ANALYSIS_LOCK = threading.Lock()
+# File d'attente sérielle des analyses (complément issue #73) : une seule
+# analyse "running" à la fois sur tout le serveur — deux Stockfish concurrents
+# saturaient le SoC de la Pi (ralentissement ~4x observé) ; les demandes
+# suivantes sont "queued" avec leur position (queue_pos, 1 = tête de file),
+# progression bloquée à 0 tant que le job n'est pas passé "running".
+_ANALYSIS_QUEUE: list[str] = []  # game_ids "queued", ordre FIFO
+_ANALYSIS_COND = threading.Condition(_ANALYSIS_LOCK)
+_ANALYSIS_WORKER_STARTED = False
 # Alertes « triche détectée » : tout appel à analyze_game effectué alors
 # qu'une partie ou un puzzle est en cours y est enregistré (alerte globale,
 # quel que soit l'échiquier analysé) et affiché sur l'interface web.
@@ -225,6 +233,9 @@ def _persist() -> None:
                 gid: {k: v for k, v in job.items() if k != "thread"}
                 for gid, job in ANALYSIS_JOBS.items()
             },
+            # snapshot sans lock : au pire légèrement en retard, et la file est
+            # de toute façon vidée au rechargement (jobs actifs -> failed).
+            "analysis_queue": list(_ANALYSIS_QUEUE),
         }
         # tmp unique par écriture : même sous verrou, deux processus/PID
         # distincts ne se marcheraient pas dessus (issue #55).
@@ -275,13 +286,15 @@ def _load_state() -> None:
                   file=sys.stderr)
     CHEAT_ALERTS.extend(state.get("cheat_alerts", []))
     for gid, job in state.get("analysis_jobs", {}).items():
-        # un job encore "running" à l'arrêt n'a pas pu terminer (thread mort
-        # avec le process) : on le marque failed plutôt que de le laisser
-        # bloqué "running" indéfiniment (issue #73).
-        if job.get("status") == "running":
+        # un job encore "running" ou "queued" à l'arrêt n'a pas pu terminer
+        # (thread mort avec le process) : on le marque failed plutôt que de le
+        # laisser bloqué indéfiniment (issue #73 + complément file sérielle).
+        if job.get("status") in ("running", "queued"):
             job["status"] = "failed"
             job["error"] = "Analyse interrompue par un redémarrage du serveur."
         ANALYSIS_JOBS[gid] = job
+    # tous les jobs actifs viennent de passer "failed" : la file est vidée
+    _ANALYSIS_QUEUE.clear()
 
 
 _load_state()
@@ -1744,6 +1757,67 @@ def _run_analysis_job(game_id: str, cheat_alert: dict | None) -> None:
         _persist()
 
 
+def _queue_pos(game_id: str) -> int | None:
+    """Position (1-based) d'un job en file d'attente ; None s'il n'est pas queued.
+
+    À appeler sous _ANALYSIS_LOCK.
+    """
+    try:
+        return _ANALYSIS_QUEUE.index(game_id) + 1
+    except ValueError:
+        return None
+
+
+def _analysis_worker() -> None:
+    """Worker global des analyses (complément issue #73) : dépile les jobs
+    "queued" dans l'ordre FIFO et les exécute UN PAR UN — jamais deux analyses
+    Stockfish en parallèle sur le serveur (la Pi ne le supporterait pas)."""
+    while True:
+        with _ANALYSIS_COND:
+            while True:
+                if not _ANALYSIS_QUEUE:
+                    _ANALYSIS_COND.wait()
+                    continue
+                gid = _ANALYSIS_QUEUE[0]
+                job = ANALYSIS_JOBS.get(gid)
+                if job is None or job["status"] != "queued":
+                    _ANALYSIS_QUEUE.pop(0)  # job supprimé entre-temps
+                    continue
+                if any(j["status"] == "running"
+                       for g, j in ANALYSIS_JOBS.items() if g != gid):
+                    # un autre job calcule déjà : on attend notre tour
+                    # (timeout = heartbeat si une notification était manquée)
+                    _ANALYSIS_COND.wait(timeout=0.1)
+                    continue
+                break
+            job["status"] = "running"
+            job["started_at"] = time.time()  # début effectif du calcul
+            cheat_alert = job.get("cheat_alert")
+            _ANALYSIS_COND.notify_all()  # les positions de file changent
+        _run_analysis_job(gid, cheat_alert)
+        with _ANALYSIS_COND:
+            if gid in _ANALYSIS_QUEUE:
+                _ANALYSIS_QUEUE.remove(gid)
+            _ANALYSIS_COND.notify_all()  # réveille le worker pour la suite
+        _persist()
+
+
+def _run_direct(game_id: str, cheat_alert: dict | None) -> None:
+    """Exécution d'un job lancé alors qu'aucun autre n'était actif (tête de
+    file immédiate) : lance le calcul puis réveille le worker pour qu'il
+    dépile la suite de la file (complément issue #73)."""
+    try:
+        _run_analysis_job(game_id, cheat_alert)
+    finally:
+        with _ANALYSIS_COND:
+            _ANALYSIS_COND.notify_all()
+        _persist()
+
+
+threading.Thread(target=_analysis_worker, daemon=True,
+                 name="analysis-worker").start()
+
+
 @mcp.tool()
 def analyze_game(game_id: str, depth: int = 15, publish: bool = True,
                  wait: bool = False) -> dict:
@@ -1754,7 +1828,14 @@ def analyze_game(game_id: str, depth: int = 15, publish: bool = True,
     le client MCP a un timeout de 120 s par appel, une grosse analyse ne doit
     plus le faire échouer. Suivre ensuite avec `analysis_status(game_id)`
     (status running → done/failed, avec progression plies/total).
-    Avec `wait=True`, bloque jusqu'à la fin et retourne la réponse complète.
+    Avec `wait=True`, bloque jusqu'à la fin (file d'attente comprise) et
+    retourne la réponse complète.
+
+    **File d'attente sérielle** (complément issue #73) : une seule analyse
+    est exécutée à la fois sur tout le serveur. Si une autre analyse est déjà
+    active, la demande part en file : `status: "queued"` avec `queue_pos`
+    (1 = tête de file, prochaine à calculer) et `progress` bloquée à 0 tant
+    que le job n'est pas passé `running`.
 
     La réponse complète (status done) contient le PGN annoté compatible Lichess
     ([%eval ...], erreurs marquées), les coups critiques (imprécisions,
@@ -1764,8 +1845,9 @@ def analyze_game(game_id: str, depth: int = 15, publish: bool = True,
     web** (jauge d'évaluation + coups gaffés pour le debrief) ; pendant le
     calcul, l'API web expose `analysis_running: true`.
 
-    Une seule analyse en cours par partie : un second appel pendant le calcul
-    renvoie `already_running: true` (pas de second Stockfish).
+    Une seule analyse en cours par partie : un second appel sur la même
+    partie renvoie `already_running: true` (pas de second Stockfish). Les
+    analyses des AUTRES parties sont sérialisées derrière (file FIFO globale).
 
     **Alerte anti-triche** : si une partie ou un puzzle est en cours au moment
     de l'appel (quel que soit l'échiquier analysé), l'appel est enregistré
@@ -1787,26 +1869,52 @@ def analyze_game(game_id: str, depth: int = 15, publish: bool = True,
         raise ValueError("Aucun coup à analyser dans cette partie.")
     with _ANALYSIS_LOCK:
         job = ANALYSIS_JOBS.get(game_id)
-        if job is not None and job["status"] == "running":
-            return {"analysis_id": game_id, "status": "running", "already_running": True,
-                    "depth": job["depth"], "moves": job["total"], "publish": job["publish"],
-                    "cheat_detected": cheat_alert is not None,
-                    **({"cheat_alert": cheat_alert} if cheat_alert is not None else {})}
-        job = {"status": "running", "depth": depth, "publish": publish,
-               "started_at": time.time(), "progress": 0, "total": len(moves),
-               "result": None, "error": None}
+        if job is not None and job["status"] in ("queued", "running"):
+            out = {"analysis_id": game_id, "status": job["status"],
+                   "already_running": True, "depth": job["depth"],
+                   "moves": job["total"], "publish": job["publish"],
+                   "cheat_detected": cheat_alert is not None,
+                   **({"cheat_alert": cheat_alert} if cheat_alert is not None else {})}
+            if job["status"] == "queued":
+                out["queue_pos"] = _queue_pos(game_id)
+            return out
+        # File sérielle (complément #73) : si une analyse est déjà active
+        # ailleurs (running ou queued), la nouvelle demande part en file ;
+        # sinon elle démarre immédiatement.
+        active = any(j["status"] in ("queued", "running")
+                     for j in ANALYSIS_JOBS.values())
+        job = {"status": "queued" if active else "running", "depth": depth,
+               "publish": publish, "started_at": time.time(), "progress": 0,
+               "total": len(moves), "result": None, "error": None,
+               "cheat_alert": cheat_alert}
         ANALYSIS_JOBS[game_id] = job
-    _persist()  # le job "running" est persisté dès le lancement (redémarrage -> failed)
-    thread = threading.Thread(target=_run_analysis_job, args=(game_id, cheat_alert),
-                              daemon=True)
-    thread.start()
+        queue_pos = None
+        if job["status"] == "queued":
+            _ANALYSIS_QUEUE.append(game_id)
+            queue_pos = _queue_pos(game_id)
+            _ANALYSIS_COND.notify_all()  # réveille le worker
+    _persist()  # le job est persisté dès le lancement (redémarrage -> failed)
+    if job["status"] == "running":
+        thread = threading.Thread(target=_run_direct, args=(game_id, cheat_alert),
+                                  daemon=True)
+        thread.start()
     if wait:
-        thread.join()
+        # attend la fin de CE job, file d'attente comprise (complément #73)
+        deadline = time.time() + 1800  # garde-fou 30 min
+        while time.time() < deadline:
+            with _ANALYSIS_LOCK:
+                status = ANALYSIS_JOBS.get(game_id, {}).get("status")
+            if status is None or status in ("done", "failed"):
+                break
+            time.sleep(0.05)
         return analysis_status(game_id)
-    return {"analysis_id": game_id, "status": "running", "depth": depth,
-            "moves": len(moves), "publish": publish,
-            "cheat_detected": cheat_alert is not None,
-            **({"cheat_alert": cheat_alert} if cheat_alert is not None else {})}
+    out = {"analysis_id": game_id, "status": job["status"], "depth": depth,
+           "moves": len(moves), "publish": publish,
+           "cheat_detected": cheat_alert is not None,
+           **({"cheat_alert": cheat_alert} if cheat_alert is not None else {})}
+    if job["status"] == "queued":
+        out["queue_pos"] = queue_pos
+    return out
 
 
 @mcp.tool()
@@ -1814,6 +1922,9 @@ def analysis_status(game_id: str) -> dict:
     """Suivi d'une analyse asynchrone lancée par `analyze_game` (issue #73).
 
     Retourne `{analysis_id, status, depth, progress, total, elapsed_s}` :
+    - `queued` : en file d'attente derrière une autre analyse (une seule analyse
+      exécutable à la fois sur le serveur, complément issue #73) — `queue_pos`
+      = position dans la file (1 = prochaine à calculer), `progress` = 0 ;
     - `running` : calcul en cours, `progress` = demi-coups analysés / `total` ;
     - `done` : réponse complète de l'analyse (pgn, evals, critical, summary,
       cheat_detected, published...) ;
@@ -1835,6 +1946,8 @@ def analysis_status(game_id: str) -> dict:
                "progress": job["progress"], "total": job["total"],
                "elapsed_s": round(time.time() - job["started_at"], 1),
                "publish": job["publish"]}
+        if job["status"] == "queued":
+            out["queue_pos"] = _queue_pos(game_id)
         if job["status"] == "done" and job["result"] is not None:
             out.update(job["result"])
         elif job["status"] == "failed":
@@ -1992,6 +2105,7 @@ def _web_state(game_id: str, game: dict, your_color: str | None) -> dict:
         "status": _game_status(game),
         "analysed": game.get("analysis") is not None,
         "analysis_running": ANALYSIS_JOBS.get(game_id, {}).get("status") == "running",
+        "analysis_queued": ANALYSIS_JOBS.get(game_id, {}).get("status") == "queued",
         "spectators": len(game["spectators"]),
         "legal_moves_uci": [] if over or your_color is None else [m.uci() for m in board.legal_moves],
         "last_move": board.peek().uci() if board.move_stack else None,
@@ -2141,6 +2255,7 @@ async def web_list_games(request: Request) -> JSONResponse:
             "analysed": analysis is not None,
             "analysis_depth": analysis["depth"] if analysis else None,
             "analysis_running": ANALYSIS_JOBS.get(game_id, {}).get("status") == "running",
+            "analysis_queued": ANALYSIS_JOBS.get(game_id, {}).get("status") == "queued",
             "puzzle": _puzzle_progress(game),
         })
     games.sort(key=lambda g: g["game_id"])
