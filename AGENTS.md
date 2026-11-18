@@ -80,18 +80,23 @@ Co-Authored-By: Mistral Vibe <vibe@mistral.ai>
    automatiquement au merge** (plus besoin de nettoyer les anciennes branches
    à la main). En local, supprimer la branche fusionnée :
    `git checkout main && git pull --ff-only origin main && git branch -D <branche>`.
-5. **Cycle de vie des issues — 3 états** :
-   - **open** : issue créée ;
-   - **developped** : issue corrigée, validée par moi et mergée dans `main` —
-     le label `developped` est posé **automatiquement** au merge par
+5. **Cycle de vie des issues — 4 états** :
+   - **open** : issue à réaliser ;
+   - **developped** : issue mergée dans `main` (PR validée) — le label
+     `developped` est posé **automatiquement** au merge par
      `.github/workflows/label-developped.yml` (déclenché sur `pull_request:
      closed` quand la PR est mergée) ; **l'issue reste ouverte**, jamais
      fermée automatiquement ;
-   - **closed** : issue **validée par Nicolas** (fermeture manuelle).
+   - **deployed** : issue corrigée, validée par moi **et déployée sur la Pi** —
+     label `deployed` posé **par moi via l'API** après le déploiement (§6) et
+     sa vérification (HTTPS 200 + smoke test), avec un commentaire
+     (« déployée en vX.YZ (commit …), site 200 OK ») ;
+   - **closed** : correction **validée par Nicolas** (fermeture manuelle).
    Pratique : après un merge, je ne ferme **aucune** issue moi-même — je
-   vérifie seulement que le label `developped` est bien posé (et le pose via
-   l'API si le workflow a manqué l'issue). C'est Nicolas qui ferme (`closed`)
-   après validation.
+   vérifie que `developped` est posé (workflow auto, sinon je le pose via
+   l'API), puis après le déploiement Pi vérifié je pose `deployed` (avec un
+   commentaire : version + commit + HTTPS 200 OK).
+   C'est Nicolas qui ferme (`closed`) après validation.
 6. **Connecteur MCP à mettre à jour** : si une livraison ajoute, renomme ou
    supprime un **outil MCP** exposé (ou change l'URL/auth du serveur), je dois
    le signaler **dans l'issue concernée ET dans le chat** — Nicolas doit alors
