@@ -57,7 +57,30 @@ Le serveur MCP est alors joignable sur :
 https://chess.votre-domaine.tld/mcp
 ```
 
-## 3 bis. Interface web (plateau navigateur)
+## 3 bis. Déploiement sur la Raspberry Pi (production mazurkiewicz1.zapto.org)
+
+Le serveur exposé publiquement tourne sur une **Raspberry Pi du LAN**
+(`nicolas@192.168.2.3`, clé SSH `~/.ssh/id_ed25519_pi`) : la box redirige les
+ports 80/443 vers la Pi, et Caddy (conteneur Docker) y sert le HTTPS Let's
+Encrypt. Docker + Compose y sont installés ; prérequis une fois pour toutes :
+`sudo usermod -aG docker nicolas` (puis re-login SSH) pour utiliser le socket
+Docker sans mot de passe.
+
+Mise à jour après chaque merge dans `main` (le clone de production est
+`~/lichess-mcp` sur la Pi ; `.env`/`Caddyfile` y sont hors git et préservés) :
+
+```bash
+ssh -i ~/.ssh/id_ed25519_pi nicolas@192.168.2.3 \
+  'cd ~/lichess-mcp && git checkout -- . && git pull --ff-only origin main && docker compose up -d --build'
+curl -s -o /dev/null -w "%{http_code}\n" https://mazurkiewicz1.zapto.org/   # attendu : 200
+```
+
+`git checkout -- .` écarte les patches locaux non commités du clone de
+production. `up -d --build` ne recrée que le conteneur app (pas de `down`) :
+Caddy reste up, les ports 80/443 ne sont jamais libérés, le serveur n'est
+indisponible que quelques secondes.
+
+## 3 ter. Interface web (plateau navigateur)
 
 Le serveur expose aussi un plateau jouable dans le navigateur à la racine :
 `https://chess.votre-domaine.tld/`. L'API web (`/web/api/...`) exige le même
