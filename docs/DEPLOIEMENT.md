@@ -66,19 +66,27 @@ Encrypt. Docker + Compose y sont installés ; prérequis une fois pour toutes :
 `sudo usermod -aG docker nicolas` (puis re-login SSH) pour utiliser le socket
 Docker sans mot de passe.
 
-Mise à jour après chaque merge dans `main` (le clone de production est
-`~/lichess-mcp` sur la Pi ; `.env`/`Caddyfile` y sont hors git et préservés) :
+Mise à jour après chaque merge dans `main` — la Pi n'ayant pas de credentials
+GitHub, on **pousse** `main` depuis le poste de travail via SSH (le clone de
+production est `~/lichess-mcp` sur la Pi ; `.env`/`Caddyfile` y sont hors git
+et préservés ; `receive.denyCurrentBranch=updateInstead` y est réglé une fois
+pour toutes pour accepter le push sur `main`) :
 
 ```bash
-ssh -i ~/.ssh/id_ed25519_pi nicolas@192.168.2.3 \
-  'cd ~/lichess-mcp && git checkout -- . && git pull --ff-only origin main && docker compose up -d --build'
+# 1. worktree propre sur la Pi (écarte les patches locaux non commités)
+ssh -i ~/.ssh/id_ed25519_pi nicolas@192.168.2.3 'cd ~/lichess-mcp && git checkout -- .'
+# 2. push de main vers le clone de production
+GIT_SSH_COMMAND="ssh -i ~/.ssh/id_ed25519_pi -o BatchMode=yes" \
+  git push ssh://nicolas@192.168.2.3/home/nicolas/lichess-mcp main:main
+# 3. rebuild du conteneur app
+ssh -i ~/.ssh/id_ed25519_pi nicolas@192.168.2.3 'cd ~/lichess-mcp && docker compose up -d --build'
+# 4. vérification
 curl -s -o /dev/null -w "%{http_code}\n" https://mazurkiewicz1.zapto.org/   # attendu : 200
 ```
 
-`git checkout -- .` écarte les patches locaux non commités du clone de
-production. `up -d --build` ne recrée que le conteneur app (pas de `down`) :
-Caddy reste up, les ports 80/443 ne sont jamais libérés, le serveur n'est
-indisponible que quelques secondes.
+`up -d --build` ne recrée que le conteneur app (pas de `down`) : Caddy reste
+up, les ports 80/443 ne sont jamais libérés, le serveur n'est indisponible que
+quelques secondes.
 
 ## 3 ter. Interface web (plateau navigateur)
 
