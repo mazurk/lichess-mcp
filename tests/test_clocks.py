@@ -229,7 +229,7 @@ def test_analyze_game_pgn_has_clk():
     game["turn_started_at"] -= 2.0
     server.play_move(gid, "e4", color="white", player="A")
     server.play_move(gid, "e5", color="black", player="B")
-    result = server.analyze_game(gid, depth=5, publish=False)
+    result = server.analyze_game(gid, depth=5, publish=False, wait=True)
     assert "[%clk 0:09:5" in result["pgn"]
     assert "[%eval" in result["pgn"]
 

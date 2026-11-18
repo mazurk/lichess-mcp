@@ -1,6 +1,6 @@
 {
   "name": "lichess-mcp",
-  "version": "0.02",
+  "version": "0.03",
   "description": "Serveur MCP d'échecs hors ligne — outils JS de test et de lint",
   "main": "index.js",
   "directories": {

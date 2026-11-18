@@ -55,7 +55,7 @@ def _build_auth() -> TokenVerifier | None:
 # (badge #versionBadge) pour valider rapidement la version déployée.
 # Le commit court est injecté au build Docker (ARG GIT_COMMIT, voir Dockerfile
 # et AGENTS.md §6) et exposé via /web/api/version.
-__version__ = "0.02"
+__version__ = "0.03"
 
 
 def _git_commit() -> str | None:
@@ -91,6 +91,13 @@ PUZZLES_LICHESS: list[dict] = [
 ]
 
 ACTIVE_PUZZLES: dict[str, dict] = {}
+
+# Jobs d'analyse asynchrone (issue #73) : game_id -> {status, depth, publish,
+# started_at, progress, total, result, error}. Une seule analyse en cours par
+# partie ; persistés dans l'état (un job "running" au redémarrage passe
+# "failed" : le thread est mort avec le process).
+ANALYSIS_JOBS: dict[str, dict] = {}
+_ANALYSIS_LOCK = threading.Lock()
 # Alertes « triche détectée » : tout appel à analyze_game effectué alors
 # qu'une partie ou un puzzle est en cours y est enregistré (alerte globale,
 # quel que soit l'échiquier analysé) et affiché sur l'interface web.
@@ -214,6 +221,10 @@ def _persist() -> None:
                 if "puzzle" in s
             ],
             "cheat_alerts": CHEAT_ALERTS,
+            "analysis_jobs": {
+                gid: {k: v for k, v in job.items() if k != "thread"}
+                for gid, job in ANALYSIS_JOBS.items()
+            },
         }
         # tmp unique par écriture : même sous verrou, deux processus/PID
         # distincts ne se marcheraient pas dessus (issue #55).
@@ -263,6 +274,14 @@ def _load_state() -> None:
             print(f"lichess-mcp: session puzzle {s.get('puzzle_id')} non restaurée : {exc}",
                   file=sys.stderr)
     CHEAT_ALERTS.extend(state.get("cheat_alerts", []))
+    for gid, job in state.get("analysis_jobs", {}).items():
+        # un job encore "running" à l'arrêt n'a pas pu terminer (thread mort
+        # avec le process) : on le marque failed plutôt que de le laisser
+        # bloqué "running" indéfiniment (issue #73).
+        if job.get("status") == "running":
+            job["status"] = "failed"
+            job["error"] = "Analyse interrompue par un redémarrage du serveur."
+        ANALYSIS_JOBS[gid] = job
 
 
 _load_state()
@@ -1683,54 +1702,144 @@ def _note_cheat(analyzed_id: str) -> dict | None:
     return alert
 
 
-@mcp.tool()
-def analyze_game(game_id: str, depth: int = 15, publish: bool = True) -> dict:
-    """Analyse une partie (ou un échiquier d'analyse) avec Stockfish.
+def _run_analysis_job(game_id: str, cheat_alert: dict | None) -> None:
+    """Thread d'analyse asynchrone (issue #73) : calcule, publie si demandé,
+    met à jour ANALYSIS_JOBS[game_id] (progress/done/failed), persiste."""
+    game = GAMES.get(game_id)
+    job = ANALYSIS_JOBS.get(game_id)
+    if game is None or job is None:
+        return
+    try:
+        def _progress(i: int, n: int) -> None:
+            with _ANALYSIS_LOCK:
+                if ANALYSIS_JOBS.get(game_id) is not None:
+                    ANALYSIS_JOBS[game_id]["progress"] = i
+        # La position racine est le FEN de départ (échiquiers d'analyse inclus).
+        result = analyze_moves(list(game["board"].move_stack), job["depth"],
+                               root=game["board"].root(),
+                               move_clocks=game["move_clocks"],
+                               white_name=game["white_name"],
+                               black_name=game["black_name"],
+                               result=_pgn_result(game),
+                               progress_cb=_progress)
+        result["game_id"] = game_id
+        result["cheat_detected"] = cheat_alert is not None
+        if cheat_alert is not None:
+            result["cheat_alert"] = cheat_alert
+        game["last_analysis_at"] = time.time()
+        if job["publish"]:
+            game["analysis"] = {"depth": job["depth"], "evals": result["evals"],
+                                "at": game["last_analysis_at"]}
+            result["published"] = True
+        with _ANALYSIS_LOCK:
+            job["result"] = result
+            job["status"] = "done"
+            job["progress"] = job["total"]
+    except Exception as exc:  # noqa: BLE001 — toute erreur moteur devient un job failed
+        with _ANALYSIS_LOCK:
+            if ANALYSIS_JOBS.get(game_id) is not None:
+                ANALYSIS_JOBS[game_id]["status"] = "failed"
+                ANALYSIS_JOBS[game_id]["error"] = str(exc)
+    finally:
+        _persist()
 
-    Retourne un PGN annoté compatible Lichess ([%eval ...], erreurs marquées)
-    et la liste des coups critiques (imprécisions, erreurs, blunders).
-    Le PGN exporté porte des en-têtes complets : White/Black (noms des joueurs),
-    Result (1-0, 0-1, 1/2-1/2 ou *) et Date du jour.
+
+@mcp.tool()
+def analyze_game(game_id: str, depth: int = 15, publish: bool = True,
+                 wait: bool = False) -> dict:
+    """Lance l'analyse Stockfish d'une partie (ou échiquier d'analyse).
+
+    **Asynchrone** (issue #73) : par défaut (`wait=False`), rend la main
+    IMMÉDIATEMENT avec `{analysis_id, status: "running", depth, moves, ...}` —
+    le client MCP a un timeout de 120 s par appel, une grosse analyse ne doit
+    plus le faire échouer. Suivre ensuite avec `analysis_status(game_id)`
+    (status running → done/failed, avec progression plies/total).
+    Avec `wait=True`, bloque jusqu'à la fin et retourne la réponse complète.
+
+    La réponse complète (status done) contient le PGN annoté compatible Lichess
+    ([%eval ...], erreurs marquées), les coups critiques (imprécisions,
+    erreurs, blunders) et les en-têtes complets (White/Black/Result/Date).
 
     Avec publish=True (défaut), l'analyse est aussi **publiée sur l'interface
-    web** : la page de la partie affiche la jauge d'évaluation et marque les
-    coups gaffés (blunder/erreur/imprécision) pour le debrief.
+    web** (jauge d'évaluation + coups gaffés pour le debrief) ; pendant le
+    calcul, l'API web expose `analysis_running: true`.
+
+    Une seule analyse en cours par partie : un second appel pendant le calcul
+    renvoie `already_running: true` (pas de second Stockfish).
 
     **Alerte anti-triche** : si une partie ou un puzzle est en cours au moment
     de l'appel (quel que soit l'échiquier analysé), l'appel est enregistré
-    comme « triche détectée » (`cheat_detected` dans le résultat) et une
-    alerte « Triche détectée » est affichée sous l'échiquier sur l'interface
-    web. Exception : si l'échiquier avait déjà été analysé avant le début de
-    la partie en cours, aucune alerte (l'analyse préexistait, pas de triche).
+    comme « triche détectée » (`cheat_detected`) et une alerte « Triche détectée »
+    est affichée sous l'échiquier sur l'interface web. Exception : si
+    l'échiquier avait déjà été analysé avant le début de la partie en cours,
+    aucune alerte (l'analyse préexistait, pas de triche).
 
     Args:
         game_id: identifiant de la partie ou de l'échiquier d'analyse.
         depth: profondeur d'analyse Stockfish (1 à 30, défaut 15).
         publish: publier l'analyse sur l'interface web (défaut True).
+        wait: attendre la fin et retourner la réponse complète (défaut False).
     """
     game = _get_game(game_id)
     cheat_alert = _note_cheat(game_id)  # tout appel, même sur un autre échiquier
     moves = list(game["board"].move_stack)
     if not moves:
         raise ValueError("Aucun coup à analyser dans cette partie.")
-    # La position racine est le FEN de départ (échiquiers d'analyse inclus) :
-    # sans elle, les coups seraient illégaux depuis la position initiale.
-    result = analyze_moves(moves, depth, root=game["board"].root(),
-                           move_clocks=game["move_clocks"],
-                           white_name=game["white_name"],
-                           black_name=game["black_name"],
-                           result=_pgn_result(game))
-    result["game_id"] = game_id
-    result["cheat_detected"] = cheat_alert is not None
-    if cheat_alert is not None:
-        result["cheat_alert"] = cheat_alert
-    game["last_analysis_at"] = time.time()
-    if publish:
-        game["analysis"] = {"depth": depth, "evals": result["evals"],
-                            "at": game["last_analysis_at"]}
-        result["published"] = True
-    _persist()
-    return result
+    with _ANALYSIS_LOCK:
+        job = ANALYSIS_JOBS.get(game_id)
+        if job is not None and job["status"] == "running":
+            return {"analysis_id": game_id, "status": "running", "already_running": True,
+                    "depth": job["depth"], "moves": job["total"], "publish": job["publish"],
+                    "cheat_detected": cheat_alert is not None,
+                    **({"cheat_alert": cheat_alert} if cheat_alert is not None else {})}
+        job = {"status": "running", "depth": depth, "publish": publish,
+               "started_at": time.time(), "progress": 0, "total": len(moves),
+               "result": None, "error": None}
+        ANALYSIS_JOBS[game_id] = job
+    _persist()  # le job "running" est persisté dès le lancement (redémarrage -> failed)
+    thread = threading.Thread(target=_run_analysis_job, args=(game_id, cheat_alert),
+                              daemon=True)
+    thread.start()
+    if wait:
+        thread.join()
+        return analysis_status(game_id)
+    return {"analysis_id": game_id, "status": "running", "depth": depth,
+            "moves": len(moves), "publish": publish,
+            "cheat_detected": cheat_alert is not None,
+            **({"cheat_alert": cheat_alert} if cheat_alert is not None else {})}
+
+
+@mcp.tool()
+def analysis_status(game_id: str) -> dict:
+    """Suivi d'une analyse asynchrone lancée par `analyze_game` (issue #73).
+
+    Retourne `{analysis_id, status, depth, progress, total, elapsed_s}` :
+    - `running` : calcul en cours, `progress` = demi-coups analysés / `total` ;
+    - `done` : réponse complète de l'analyse (pgn, evals, critical, summary,
+      cheat_detected, published...) ;
+    - `failed` : `error` renseigné ;
+    - `none` : aucune analyse lancée sur cette partie.
+    Si la partie a une analyse publiée (session antérieure), renvoie `done`.
+    """
+    with _ANALYSIS_LOCK:
+        job = ANALYSIS_JOBS.get(game_id)
+        if job is None:
+            game = _get_game(game_id)
+            if game.get("analysis"):
+                return {"analysis_id": game_id, "status": "done",
+                        "depth": game["analysis"]["depth"], "progress": None,
+                        "total": None, "elapsed_s": 0.0, "published": True,
+                        "note": "analyse publiée (session antérieure)"}
+            return {"analysis_id": game_id, "status": "none"}
+        out = {"analysis_id": game_id, "status": job["status"], "depth": job["depth"],
+               "progress": job["progress"], "total": job["total"],
+               "elapsed_s": round(time.time() - job["started_at"], 1),
+               "publish": job["publish"]}
+        if job["status"] == "done" and job["result"] is not None:
+            out.update(job["result"])
+        elif job["status"] == "failed":
+            out["error"] = job["error"]
+        return out
 
 
 @mcp.tool()
@@ -1882,6 +1991,7 @@ def _web_state(game_id: str, game: dict, your_color: str | None) -> dict:
         "history": _full_history(game),
         "status": _game_status(game),
         "analysed": game.get("analysis") is not None,
+        "analysis_running": ANALYSIS_JOBS.get(game_id, {}).get("status") == "running",
         "spectators": len(game["spectators"]),
         "legal_moves_uci": [] if over or your_color is None else [m.uci() for m in board.legal_moves],
         "last_move": board.peek().uci() if board.move_stack else None,
@@ -2030,6 +2140,7 @@ async def web_list_games(request: Request) -> JSONResponse:
             "status": _game_status(game),
             "analysed": analysis is not None,
             "analysis_depth": analysis["depth"] if analysis else None,
+            "analysis_running": ANALYSIS_JOBS.get(game_id, {}).get("status") == "running",
             "puzzle": _puzzle_progress(game),
         })
     games.sort(key=lambda g: g["game_id"])

@@ -72,7 +72,8 @@ format Lichess (FEN + coups UCI).
 | `try_puzzle_move(puzzle_id, move, game_id)` | Propose une solution de puzzle — pour un mat en 2 : coup clé validé, réponse adverse jouée automatiquement, puis coup de mat. Avec `game_id` (puzzle publié), le coup validé est joué sur l'échiquier web |
 | `list_puzzles(mate_in)` | Catalogue des puzzles disponibles (filtre 1 ou 2) — ids à passer à `start_puzzle` |
 | `start_puzzle(puzzle_id, name)` | Publie un puzzle en mode **puzzle** (échiquier observable sur le web) pour entraîner l'agent |
-| `analyze_game(game_id, depth)` | Analyse Stockfish d'une partie ou d'un échiquier d'analyse → PGN annoté (en-têtes complets : White/Black/Result/Date) + coups critiques. Si une partie/un puzzle est en cours, l'appel est signalé « triche détectée » (`cheat_detected`) et le bandeau s'affiche sous l'échiquier de la partie/puzzle concernée — sauf si l'échiquier avait déjà été analysé avant le début de la partie |
+| `analyze_game(game_id, depth, publish, wait)` | Lance l'analyse Stockfish d'une partie/échiquier **en asynchrone** : rend immédiatement `{analysis_id, status: "running", depth, moves}` (le client MCP a un timeout de 120 s/appel) ; `wait=True` bloque jusqu'au bout. Réponse complète (PGN annoté en-têtes complets White/Black/Result/Date + coups critiques) via `analysis_status`. Une seule analyse en cours par partie (second appel → `already_running`). `publish=True` publie sur l'UI web (`analysis_running: true` pendant le calcul). Alerte « triche détectée » (`cheat_detected`) si partie/puzzle en cours — sauf analyse préexistante |
+| `analysis_status(game_id)` | Suivi de l'analyse asynchrone : `{status: running/done/failed/none, progress, total, elapsed_s}` ; `done` = réponse complète (pgn, evals, critical, published…) |
 | `analyze_pgn(pgn, depth)` | Analyse Stockfish d'un PGN externe (ex. exporté de lichess.org) |
 
 ## Installation

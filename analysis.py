@@ -195,7 +195,8 @@ def analyze_moves(moves: list[chess.Move], depth: int = 15,
                   move_clocks: list[dict | None] | None = None, *,
                   white_name: str | None = None, black_name: str | None = None,
                   result: str | None = None, date: str | None = None,
-                  headers: dict | None = None) -> dict:
+                  headers: dict | None = None,
+                  progress_cb=None) -> dict:
     """Analyse une séquence de coups depuis une position de départ.
 
     Par défaut la position initiale ; `root` permet d'analyser depuis un FEN
@@ -210,6 +211,9 @@ def analyze_moves(moves: list[chess.Move], depth: int = 15,
     Black / Result / Date sont renseignés depuis `white_name`, `black_name`,
     `result` (1-0, 0-1, 1/2-1/2, *) et `date` (défaut : aujourd'hui, format
     PGN YYYY.MM.DD) — l'export est ainsi directement exploitable.
+
+    `progress_cb(i, n)` (optionnel) est appelé après chaque coup analysé
+    (i de 1 à n) — utilisé par le serveur pour suivre une analyse asynchrone.
 
     Retourne le PGN annoté, un résumé par camp et la liste des coups critiques.
     """
@@ -273,6 +277,8 @@ def analyze_moves(moves: list[chess.Move], depth: int = 15,
                 errors_white += 1
             elif error_side:
                 errors_black += 1
+            if progress_cb is not None:
+                progress_cb(i + 1, len(moves))
 
     return {
         "pgn": str(game),
