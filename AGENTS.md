@@ -5,8 +5,10 @@ avoir besoin de la répéter.
 
 **Principe clé : le serveur tourne en parallèle du travail.** Le serveur exposé
 (https://mazurkiewicz1.zapto.org) tourne sur la **Raspberry Pi** (`~/lichess-mcp`
-sur `nicolas@192.168.2.3`, déployé par `docker compose up -d --build` après chaque
-merge — voir §6) et **jamais** depuis ce dépôt de travail. On peut donc travailler
+sur la Pi, déployé par `docker compose up -d --build` après chaque merge — voir §6)
+et **jamais** depuis ce dépôt de travail. **Accès à la Pi : `ssh pi-mcp`** (alias
+défini dans `~/.ssh/config` : HostName 192.168.2.3, User nicolas, IdentityFile
+`~/.ssh/id_ed25519_pi`) — inutile de retenir l'IP ni l'utilisateur. On peut donc travailler
 ici en parallèle (branches, tests, éditions, PR) sans affecter le serveur en cours ;
 seuls les tests locaux (pytest, ruff, node) tournent à côté, sur des
 ports/processus indépendants.
@@ -80,23 +82,22 @@ Après le merge dans `main` :
      passe, et autoriser le push git sur la branche `main` du clone :
      `git config receive.denyCurrentBranch updateInstead`.
      Docker + Compose y sont déjà installés (dockerd actif, Caddy écoute 80/443).
-   - Le **clone de production** vit dans `~/lichess-mcp` sur la Pi
-     (`ssh -i ~/.ssh/id_ed25519_pi nicolas@192.168.2.3`) ; `.env` et
-     `Caddyfile` y sont hors git, donc jamais touchés par un push ; `data/`
-     vit dans le volume Docker `games_data`. La Pi n'a **pas** de credentials
-     GitHub : on pousse depuis ce dépôt via SSH.
+   - Le **clone de production** vit dans `~/lichess-mcp` sur la Pi — on y
+     accède simplement par **`ssh pi-mcp`** (alias `~/.ssh/config`, inutile de
+     retenir IP ni utilisateur) ; `.env` et `Caddyfile` y sont hors git, donc
+     jamais touchés par un push ; `data/` vit dans le volume Docker
+     `games_data`. La Pi n'a **pas** de credentials GitHub : on pousse depuis
+     ce dépôt via SSH.
    - Commandes de déploiement, depuis ce dépôt (`main` à jour) :
 
      ```bash
      # 1. sur la Pi : écarter les patches locaux non commités (volontairement
      #    non versionnés) pour garantir un push propre
-     ssh -i ~/.ssh/id_ed25519_pi nicolas@192.168.2.3 'cd ~/lichess-mcp && git checkout -- .'
+     ssh pi-mcp 'cd ~/lichess-mcp && git checkout -- .'
      # 2. pousser main vers le clone de production (met à jour son worktree)
-     GIT_SSH_COMMAND="ssh -i ~/.ssh/id_ed25519_pi -o BatchMode=yes" \
-       git push ssh://nicolas@192.168.2.3/home/nicolas/lichess-mcp main:main
+     git push ssh://pi-mcp/home/nicolas/lichess-mcp main:main
      # 3. rebuild du conteneur app sur la Pi
-     ssh -i ~/.ssh/id_ed25519_pi nicolas@192.168.2.3 \
-       'cd ~/lichess-mcp && docker compose up -d --build'
+     ssh pi-mcp 'cd ~/lichess-mcp && docker compose up -d --build'
      ```
 
      `up -d --build` recrée **uniquement** le conteneur app (image rebuildée) :
