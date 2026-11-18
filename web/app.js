@@ -395,6 +395,8 @@ function renderGameStatus() {
   let html = '<span class="badge ' + cls + '">' + (state.over ? "" : "● ") + badge + "</span>";
   if (state.analysis_running) {
     html += ' <span class="badge live">● analyse en cours…</span>';
+  } else if (state.analysis_queued) {
+    html += ' <span class="badge queued">⏳ analyse en file d\'attente…</span>';
   }
   if (state.analysed && state.analysis) {
     html += ' <span class="badge analysed">analysée (prof. ' + state.analysis.depth + ")</span>";
@@ -650,7 +652,8 @@ async function refreshGameList() {
       ? g.name : g.white_name + " vs " + g.black_name;
     let label = g.game_id + " — " + who
       + " · " + g.plies + " coups · " + g.status
-      + (g.analysis_running ? " · analyse en cours…" : "")
+      + (g.analysis_running ? " · analyse en cours…"
+        : g.analysis_queued ? " · analyse en file…" : "")
       + (g.analysed ? (ongoingAnalysed ? " · ANALYSÉE en cours !" : " · analysée") : "");
     if (g.puzzle) {
       label += " · puzzle " + g.puzzle.puzzle_id
