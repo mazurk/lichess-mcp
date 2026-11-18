@@ -64,3 +64,12 @@ def test_agents_md_requires_issue_before_any_bugfix():
     # la doc utilisateur reflète la même règle
     issues_doc = (REPO / "docs" / "ISSUES.md").read_text(encoding="utf-8")
     assert "Bug = issue d'abord" in issues_doc
+
+
+def test_agents_md_documents_connector_update_rule():
+    """Règle « connecteur MCP à mettre à jour » : quand une livraison change les
+    outils exposés, je dois le dire dans l'issue ET dans le chat (AGENTS.md)."""
+    text = AGENTS.read_text(encoding="utf-8")
+    assert "Connecteur MCP à mettre à jour" in text
+    assert "dans l'issue" in text and "dans le chat" in text
+    assert "Studio Mistral" in text

@@ -92,6 +92,12 @@ Co-Authored-By: Mistral Vibe <vibe@mistral.ai>
    vérifie seulement que le label `developped` est bien posé (et le pose via
    l'API si le workflow a manqué l'issue). C'est Nicolas qui ferme (`closed`)
    après validation.
+6. **Connecteur MCP à mettre à jour** : si une livraison ajoute, renomme ou
+   supprime un **outil MCP** exposé (ou change l'URL/auth du serveur), je dois
+   le signaler **dans l'issue concernée ET dans le chat** — Nicolas doit alors
+   recharger/mettre à jour le connecteur dans le Studio Mistral
+   (procédure : `docs/DEPLOIEMENT.md` §5). À l'inverse, si aucun outil n'évolue,
+   je le précise aussi (« pas de mise à jour du connecteur nécessaire »).
 
 ## 6. Déploiement sur la Raspberry Pi (production)
 
