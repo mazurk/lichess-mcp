@@ -171,7 +171,9 @@ def test_next_puzzle_session_reloaded(tmp_path):
     assert pid in server.ACTIVE_PUZZLES
     session = server.ACTIVE_PUZZLES[pid]
     assert session["puzzle"]["PuzzleId"] == pid
-    assert session["plies_done"] == 0
+    # issue #84 : auto-init du coup forcé (plies_done = parité du solveur)
+    assert session["plies_done"] == server._puzzle_solver_parity(session["puzzle"])
+    assert session["solver_parity"] == server._puzzle_solver_parity(session["puzzle"])
 
 
 def test_cheat_alerts_persisted(tmp_path):
