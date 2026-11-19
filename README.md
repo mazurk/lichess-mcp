@@ -161,6 +161,30 @@ demande le token une fois et le mémorise localement.
 }
 ```
 
+## Tests
+
+```bash
+source .venv/bin/activate
+ruff check .
+python -m pytest tests/ -q        # les tests d'analyse nécessitent Stockfish
+                                   # (apt install stockfish ou LICHESS_MCP_STOCKFISH=...)
+node --test tests/web/util.test.mjs
+npx eslint web/util.js tests/web/util.test.mjs eslint.config.mjs
+```
+
+**Smoke test local en conditions réelles (Docker)** — conteneur app seul, port
+18000, projet/volume compose isolés (`docker-compose.test.yml`, ne touche ni
+aux ports 80/443 ni aux données) :
+
+```bash
+printf 'LICHESS_MCP_AUTH_TOKEN=test-local\n' > /tmp/lichess-test.env
+docker compose -p lichess-mcp-test --env-file /tmp/lichess-test.env \
+  -f docker-compose.yml -f docker-compose.test.yml up -d --build lichess-mcp
+curl -s --noproxy '*' -H "Authorization: Bearer test-local" \
+  http://127.0.0.1:18000/web/api/version   # {"version": "...", "commit": "dev"}
+# arrêt : docker compose -p lichess-mcp-test down
+```
+
 ## Ajouter des puzzles
 
 `puzzles.json` contient **2264 puzzles** issus de la
