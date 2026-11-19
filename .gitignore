@@ -8,3 +8,4 @@ node_modules/
 DELIVERY/
 data/
 prompt.txt
+*AGENTS*.md
