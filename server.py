@@ -55,7 +55,7 @@ def _build_auth() -> TokenVerifier | None:
 # (badge #versionBadge) pour valider rapidement la version déployée.
 # Le commit court est injecté au build Docker (ARG GIT_COMMIT, voir Dockerfile
 # et docs/DEPLOIEMENT.md §6) et exposé via /web/api/version.
-__version__ = "0.07"
+__version__ = "0.08"
 
 
 def _git_commit() -> str | None:
@@ -93,18 +93,20 @@ PUZZLES_LICHESS: list[dict] = [
 ACTIVE_PUZZLES: dict[str, dict] = {}
 
 # Scores d'entraînement par thème de puzzle (issue #72), persistés :
-# thème -> {attempts, correct, solved, first_try} — attempts = coups tentés,
-# correct = coups validés, solved = puzzles résolus, first_try = résolus dès
-# le premier coup proposé (taux de réussite « du premier coup »).
+# thème -> {attempts, correct, solved, first_try, last_puzzle_id} — attempts =
+# coups tentés, correct = coups validés, failed = attempts - correct, solved =
+# puzzles résolus, first_try = résolus dès le premier coup proposé (taux de
+# réussite « du premier coup »), last_puzzle_id = dernier puzzle tenté (issue #82).
 PUZZLE_SCORES: dict[str, dict] = {}
 
 
 def _puzzle_scores_bump(theme: str, *, correct: bool, solved: bool,
-                        first_ply: bool) -> None:
-    """Incrémente les compteurs du thème (issue #72). Appelé à chaque
+                        first_ply: bool, puzzle_id: str | None = None) -> None:
+    """Incrémente les compteurs du thème (issues #72/#82). Appelé à chaque
     try_puzzle_move ; persisté via _persist."""
     s = PUZZLE_SCORES.setdefault(
-        theme, {"attempts": 0, "correct": 0, "solved": 0, "first_try": 0})
+        theme, {"attempts": 0, "correct": 0, "solved": 0, "first_try": 0,
+                "last_puzzle_id": None})
     s["attempts"] += 1
     if correct:
         s["correct"] += 1
@@ -112,6 +114,8 @@ def _puzzle_scores_bump(theme: str, *, correct: bool, solved: bool,
         s["solved"] += 1
         if first_ply:
             s["first_try"] += 1
+    if puzzle_id is not None:
+        s["last_puzzle_id"] = puzzle_id
 
 # Jobs d'analyse asynchrone (issue #73) : game_id -> {status, depth, publish,
 # started_at, progress, total, result, error}. Une seule analyse en cours par
@@ -311,9 +315,12 @@ def _load_state() -> None:
         # merge défensif : on ne perd pas les compteurs courants si le fichier
         # est plus récent que la mémoire (redémarrage).
         cur = PUZZLE_SCORES.setdefault(
-            theme, {"attempts": 0, "correct": 0, "solved": 0, "first_try": 0})
+            theme, {"attempts": 0, "correct": 0, "solved": 0, "first_try": 0,
+                    "last_puzzle_id": None})
         for k in ("attempts", "correct", "solved", "first_try"):
             cur[k] = max(cur.get(k, 0), int(s.get(k, 0)))
+        if s.get("last_puzzle_id"):
+            cur["last_puzzle_id"] = s["last_puzzle_id"]
     for gid, job in state.get("analysis_jobs", {}).items():
         # un job encore "running" ou "queued" à l'arrêt n'a pas pu terminer
         # (thread mort avec le process) : on le marque failed plutôt que de le
@@ -1491,39 +1498,52 @@ def list_puzzles(mate_in: int | None = None, theme: str | None = None) -> dict:
     return {"count": len(puzzles), "puzzles": puzzles}
 
 
-def _puzzle_stats_payload() -> dict:
-    """Scores par thème (issue #72) : compteurs + taux de réussite et de
-    réussite au premier essai. Partagé entre l'outil MCP puzzle_stats et
-    l'endpoint web /web/api/puzzle_stats."""
+def _puzzle_stats_payload(theme: str | None = None) -> dict:
+    """Scores par thème (issues #72/#82) : compteurs + taux. Partagé entre
+    l'outil MCP puzzle_stats et l'endpoint web /web/api/puzzle_stats.
+    `theme` filtre la vue par thème (None = vue globale)."""
     def _with_rate(s: dict) -> dict:
         out = dict(s)
+        out["failed"] = s["attempts"] - s["correct"]
         out["success_rate"] = (round(100.0 * s["correct"] / s["attempts"], 1)
                                if s["attempts"] else 0.0)
         out["first_try_rate"] = (round(100.0 * s["first_try"] / s["solved"], 1)
                                  if s["solved"] else 0.0)
         return out
 
-    by_theme = {t: _with_rate(s) for t, s in sorted(PUZZLE_SCORES.items())}
+    scores = PUZZLE_SCORES
+    if theme is not None:
+        scores = {theme: PUZZLE_SCORES[theme]} if theme in PUZZLE_SCORES else {}
+    by_theme = {t: _with_rate(s) for t, s in sorted(scores.items())}
     total = {
-        "attempts": sum(s["attempts"] for s in PUZZLE_SCORES.values()),
-        "correct": sum(s["correct"] for s in PUZZLE_SCORES.values()),
-        "solved": sum(s["solved"] for s in PUZZLE_SCORES.values()),
-        "first_try": sum(s["first_try"] for s in PUZZLE_SCORES.values()),
+        "attempts": sum(s["attempts"] for s in scores.values()),
+        "correct": sum(s["correct"] for s in scores.values()),
+        "solved": sum(s["solved"] for s in scores.values()),
+        "first_try": sum(s["first_try"] for s in scores.values()),
     }
-    return {"total": _with_rate(total), "by_theme": by_theme}
+    return {"total": _with_rate(total), "by_theme": by_theme, "theme": theme}
 
 
 @mcp.tool()
-def puzzle_stats() -> dict:
-    """Scores d'entraînement de l'agent par thème de puzzle (issue #72).
+def puzzle_stats(theme: str | None = None) -> dict:
+    """Scores d'entraînement de l'agent par thème de puzzle (issues #72/#82).
 
     Pour chaque thème : `attempts` (coups tentés), `correct` (coups validés),
-    `solved` (puzzles résolus), `first_try` (résolus dès le premier coup),
-    `success_rate` (% de coups validés) et `first_try_rate` (% de résolutions
-    au premier essai). Un total agrège tous les thèmes. Sert à cibler
-    l'entraînement sur les familles d'erreurs réelles de l'agent.
+    `failed` (coups refusés), `solved` (puzzles résolus), `first_try` (résolus
+    dès le premier coup), `last_puzzle_id`, `success_rate` (% de coups
+    validés) et `first_try_rate` (% de résolutions au premier essai). Un
+    `total` agrège la vue demandée. Sert à cibler l'entraînement sur les
+    familles d'erreurs réelles de l'agent. Persisté côté serveur (state JSON).
+
+    Args:
+        theme: filtre optionnel — un thème du catalogue (ex. "fork", "pin",
+            "mateIn3") pour une vue ciblée. None = vue globale.
     """
-    return _puzzle_stats_payload()
+    if theme is not None:
+        theme = theme.strip()
+        if not theme:
+            raise ValueError("theme ne doit pas être vide (ou None).")
+    return _puzzle_stats_payload(theme)
 
 
 @mcp.tool()
@@ -1702,7 +1722,8 @@ def try_puzzle_move(puzzle_id: str, move: str,
     if (not matches_line) and not alternative:
         # refus explicite : rappeler la réponse adverse déjà jouée pour
         # éviter les essais à l'aveugle (issue #52, mate2_090)
-        _puzzle_scores_bump(theme, correct=False, solved=False, first_ply=False)
+        _puzzle_scores_bump(theme, correct=False, solved=False, first_ply=False,
+                            puzzle_id=puzzle["PuzzleId"])
         _persist()
         note = f"{board.san(parsed)} n'est pas la solution. Réessayez."
         if board.move_stack and plies_done > 0 and plies_done % 2 == 0:
@@ -1758,7 +1779,8 @@ def _apply_puzzle_move(puzzle: dict, session: dict, parsed: chess.Move,
     if solved_now:
         session["solved"] = True
     _puzzle_scores_bump(theme, correct=True, solved=solved_now,
-                        first_ply=(first_ply and solved_now))
+                        first_ply=(first_ply and solved_now),
+                        puzzle_id=puzzle["PuzzleId"])
     _persist()
     if solved_now:
         if board.is_checkmate():
@@ -2334,7 +2356,8 @@ async def web_puzzle_stats(request: Request) -> JSONResponse:
     le mode Puzzles de l'UI web."""
     if not _web_authorized(request):
         return JSONResponse({"error": "non autorisé"}, status_code=401)
-    return JSONResponse(_puzzle_stats_payload())
+    theme = request.query_params.get("theme")
+    return JSONResponse(_puzzle_stats_payload(theme))
 
 
 @mcp.custom_route("/web/api/games", methods=["GET"])
