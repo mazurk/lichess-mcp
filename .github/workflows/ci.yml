@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Installer Stockfish
+        run: sudo apt-get update && sudo apt-get install -y stockfish
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - name: Installer les dépendances
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pytest ruff
+      - name: Linter Python (Ruff)
+        run: ruff check .
+      - name: Lancer les tests
+        run: pytest tests/ -v
+      - name: Tests web (Node)
+        run: node --test tests/web/util.test.mjs
+      - name: Linter JS (ESLint)
+        run: |
+          npm ci
+          npx eslint web/util.js tests/web/util.test.mjs eslint.config.mjs
+      - name: Vérifier que le serveur démarre
+        run: |
+          timeout 60 python - <<'EOF'
+          import asyncio, sys
+          sys.path.insert(0, ".")
+          from fastmcp import Client
+          import server
+
+          async def main():
+              async with Client(server.mcp) as c:
+                  tools = await c.list_tools()
+                  names = {t.name for t in tools}
+                  # outils de base toujours attendus : les PR ajoutant de nouveaux
+                  # outils (list_games, start_puzzle, list_puzzles...) sont additives,
+                  # on ne fige donc pas le compte total (identique sur chaque PR).
+                  expected = {
+                      "new_game", "new_analysis_board",
+                      "join_game", "get_board", "legal_moves", "play_move",
+                      "wait_for_turn", "undo", "resign", "game_status",
+                      "next_puzzle", "try_puzzle_move", "share_puzzle",
+                      "analyze_game", "analyze_pgn",
+                  }
+                  missing = expected - names
+                  assert not missing, f"outils manquants : {missing}"
+                  print(f"Serveur MCP OK ({len(tools)} outils) :", sorted(names))
+
+          asyncio.run(main())
+          EOF

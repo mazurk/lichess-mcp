@@ -1,0 +1,45 @@
+# lichess-mcp : serveur MCP + reverse proxy Caddy (HTTPS automatique)
+#
+# Prérequis : un nom de domaine pointant vers votre machine (ex. via DDNS)
+# et les ports 80/443 redirigés vers elle sur votre box.
+#
+# `name:` fige le nom de projet compose : quelle que soit la copie du dépôt
+# depuis laquelle on lance compose (clone de production ~/lichess-mcp sur la
+# machine hôte dédiée, voir docs/DEPLOIEMENT.md), c'est le MÊME projet qui est géré
+# (conteneurs, volumes caddy_data, ports 80/443).
+
+name: lichess-mcp
+
+services:
+  lichess-mcp:
+    build: .
+    environment:
+      LICHESS_MCP_TRANSPORT: http
+      LICHESS_MCP_HOST: 0.0.0.0
+      LICHESS_MCP_PORT: "8000"
+      # Générez-le avec : python -c "import secrets; print(secrets.token_urlsafe(32))"
+      LICHESS_MCP_AUTH_TOKEN: ${LICHESS_MCP_AUTH_TOKEN:?Définissez LICHESS_MCP_AUTH_TOKEN dans .env}
+    expose:
+      - "8000"
+    volumes:
+      # parties persistantes : survivent à la recréation du conteneur
+      - games_data:/app/data
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - lichess-mcp
+    restart: unless-stopped
+
+volumes:
+  caddy_data:
+  caddy_config:
+  games_data:

@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>lichess-mcp — plateau local</title>
+<style>
+  :root {
+    --light: #f0d9b5; --dark: #b58863; --hl: #cdd26a;
+    --bg: #262421; --panel: #302e2b; --text: #bababa; --accent: #8ca64c;
+    --blunder: #d34f5a; --mistake: #e8a33d; --inaccuracy: #d7c14a;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; display: flex; justify-content: center; background: var(--bg);
+         color: var(--text); font-family: system-ui, sans-serif; flex-wrap: wrap; }
+  .app { display: flex; gap: 24px; padding: 24px; flex-wrap: wrap; justify-content: center; }
+  .board { display: grid; grid-template-columns: repeat(8, 64px);
+           grid-template-rows: repeat(8, 64px); border: 4px solid var(--dark); user-select: none; }
+  .sq { position: relative; display: flex; align-items: center; justify-content: center;
+        font-size: 44px; line-height: 1; cursor: pointer; }
+  .sq.light { background: var(--light); } .sq.dark { background: var(--dark); }
+  .sq.sel::after { content: ""; position: absolute; inset: 0; background: rgba(20, 85, 30, 0.5); }
+  .sq.target::before { content: ""; position: absolute; width: 22px; height: 22px;
+        border-radius: 50%; background: rgba(20, 85, 30, 0.35); }
+  .sq.target.capture::before { border-radius: 0; inset: 4px; width: auto; height: auto;
+        background: radial-gradient(rgba(20,85,30,0) 55%, rgba(20,85,30,0.35) 56%); }
+  .sq.last { box-shadow: inset 0 0 0 3px rgba(255,255,100,.7); }
+  .piece { width: 52px; height: 52px; display: block; margin: auto; pointer-events: none; }
+  .board { border: 4px solid #4a3f35; }
+  .sq .coord { position: absolute; font-size: 11px; font-weight: 700; }
+  .sq.light .coord { color: var(--dark); }
+  .sq.dark .coord { color: var(--light); }
+  .sq .coord.f { right: 3px; bottom: 1px; } .sq .coord.r { left: 3px; top: 1px; }
+  .side { width: 300px; display: flex; flex-direction: column; gap: 12px; }
+  .card { background: var(--panel); border-radius: 8px; padding: 14px; }
+  h1 { font-size: 18px; margin: 0 0 4px; color: #fff; }
+  .sub { font-size: 12px; color: #888; margin: 0 0 10px; }
+  label { font-size: 12px; display: block; margin: 8px 0 2px; }
+  select, input, button { width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #4d4b47;
+        background: #262421; color: var(--text); font-size: 14px; }
+  button { background: var(--accent); border: none; color: #fff; font-weight: 600; cursor: pointer; }
+  button:hover { filter: brightness(1.1); }
+  #btnRefreshGames { width: auto; flex: 0 0 auto; padding: 4px 12px; font-size: 15px; line-height: 1; }
+  #status { min-height: 20px; font-size: 13px; }
+  #result { font-weight: 700; color: var(--accent); }
+  #moves { max-height: 260px; overflow-y: auto; font-size: 13px; line-height: 1.8; display: grid; grid-template-columns: 34px 1fr 1fr; align-items: baseline; }
+  #moves .num { color: #888; }
+  #moves .mv-w, #moves .mv-b { padding-right: 6px; border-radius: 3px; padding-left: 3px; }
+  #moves .blunder { color: #fff; background: var(--blunder); font-weight: 700; }
+  #moves .mistake { color: #fff; background: var(--mistake); font-weight: 700; }
+  #moves .inaccuracy { background: var(--inaccuracy); font-weight: 700; }
+  #moves .best { text-decoration: underline dotted var(--mistake); }
+  .evalchart { display: block; height: 96px; padding: 4px 2px;
+               background: var(--panel); border-radius: 6px; margin-top: 6px; }
+  .evalchart svg { width: 100%; height: 100%; display: block; }
+  .evallegend { font-size: 11px; color: #888; margin-top: 4px; }
+  .evallegend b { color: #ddd; }
+  #gameStatus { min-height: 20px; font-size: 12px; margin-bottom: 6px; }
+  #modeHint { min-height: 30px; }
+  .badge { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 11px;
+           background: #3d3a37; color: #ddd; margin-right: 4px; }
+  .badge.live { color: #8ca64c; }
+  .badge.queued { color: #e8a33d; }
+  .badge.over { color: #d34f5a; }
+  /* Version du logiciel déployé, en coin haut gauche (issue #67) */
+  #versionBadge { position: fixed; top: 8px; left: 8px; z-index: 10;
+                  background: var(--panel); border: 1px solid #4d4b47; color: #999;
+                  font-size: 11px; font-family: ui-monospace, monospace;
+                  padding: 2px 8px; border-radius: 10px; user-select: none; }
+  .badge.analysed { color: #7fb0d8; }
+  .badge.spectators { color: #c9b8ff; }
+  .badge.browsing { color: #e8a33d; }
+  .badge.puzzle { color: #e8b33d; }
+  .badge a { color: #e8a33d; }
+  .navbtns { display: flex; gap: 4px; margin-bottom: 6px; }
+  .navbtns button { padding: 4px 10px; }
+  #moves .mv { cursor: pointer; border-radius: 3px; padding-left: 3px; padding-right: 2px; }
+  #moves .mv:hover { background: #4a4744; }
+  #moves .mv.cur { background: #5a6b3a; color: #fff; }
+  #moves .mvcell { padding-right: 6px; }
+  #moves .evalv { color: #8ca64c; font-size: 11px; margin-left: 2px; }
+  #moves .timev { color: #8a8a8a; font-size: 11px; margin-left: 2px; }
+  #moves .mv.cur .evalv { color: #d7e2b0; }
+  .board-wrap { display: flex; flex-direction: column; gap: 6px; }
+  .board-label { font-size: 14px; color: #ddd; padding: 0 2px; display: flex; justify-content: space-between; }
+  .board-label .seat { color: #8a8a8a; font-size: 12px; }
+  .board-label .turn-ind { color: var(--accent); font-weight: 700; }
+  .board-label .to-move { color: #fff; font-weight: 700; }
+  .board-label .clock { font-variant-numeric: tabular-nums; font-weight: 700;
+                        font-size: 14px; color: #ddd; }
+  .board-label .clock.running { color: #fff; }
+  .board-label .clock.low { color: #d34f5a; }
+  .err { color: #e07a5f; }
+  .ok { color: var(--accent); }
+  #status { min-height: 18px; font-size: 13px; margin: 2px 0 0; }
+  #result { min-height: 20px; font-size: 16px; font-weight: 700; text-align: center;
+            margin: 4px 0 0; color: #fff; }
+  .players { font-size: 13px; margin: 6px 0; }
+  .players b { color: #fff; }
+  .spectator-note { font-size: 12px; color: #d9a441; }
+</style>
+</head>
+<body>
+<div id="versionBadge" title="Version du serveur déployé">v…</div>
+<div class="app">
+  <div class="board-wrap">
+    <div class="board-label" id="labelTop"></div>
+    <div class="board" id="board"></div>
+    <div class="board-label" id="labelBottom"></div>
+    <div id="cheatAlert" style="display:none; color:#fff; background:var(--blunder); font-weight:700; font-size:13px; padding:3px 10px; border-radius:6px;"></div>
+    <p id="status"></p>
+    <p id="result"></p>
+  </div>
+  <div class="side">
+    <div class="card">
+      <h1>Choix de la partie</h1>
+      <label for="modeSelect">Mode</label>
+      <select id="modeSelect">
+        <option value="create" selected>Créer</option>
+        <option value="join">Rejoindre</option>
+        <option value="analysis">Analyse</option>
+        <option value="dryrun">Dry-run</option>
+        <option value="puzzle">Puzzles</option>
+      </select>
+      <p class="sub" id="modeHint"></p>
+
+      <div id="mode-create">
+      <p class="sub">Plateau local — jouez contre le moteur, un agent IA ou un humain ; ou regardez en spectateur.</p>
+      <label for="yourName">Votre nom</label>
+      <input id="yourName" value="Joueur">
+      <label for="color">Votre couleur</label>
+      <select id="color"><option value="white">Blancs</option><option value="black">Noirs</option></select>
+      <label for="opponentMode">Adversaire</label>
+      <select id="opponentMode">
+        <option value="engine" selected>Moteur (répond automatiquement)</option>
+        <option value="free">Partie libre — agent IA ou humain</option>
+      </select>
+      <div id="freeOnly" style="display:none;">
+        <label for="opponentName">Nom de l'adversaire</label>
+        <input id="opponentName" value="Adversaire">
+      </div>
+      <div id="engineOnly">
+        <label for="level">Niveau du moteur</label>
+        <select id="level"><option value="easy">Facile</option><option value="medium" selected>Moyen</option><option value="hard">Difficile</option></select>
+      </div>
+      <label for="clockMode">Horloge</label>
+      <select id="clockMode">
+        <option value="infinite" selected>INFINI</option>
+        <option value="10+0">10+0 — 10 minutes, sans incrément</option>
+      </select>
+      <div style="display:flex; gap:8px; margin-top:12px;">
+        <button id="btnNew">Nouvelle partie</button>
+      </div>
+      </div>
+
+      <div id="mode-join" style="display:none;">
+      <label for="gameId">Partie du serveur</label>
+      <div style="display:flex; gap:6px;">
+        <select id="gameId" style="flex:1 1 auto; min-width: 0;"></select>
+        <button id="btnRefreshGames" title="Rafraîchir la liste des parties">↻</button>
+      </div>
+      <div id="joinNameWrap">
+        <label for="joinName">Votre nom</label>
+        <input id="joinName" value="Joueur">
+      </div>
+      <div id="viewColorWrap" style="display:none;">
+        <label for="viewColor">Perspective d'affichage</label>
+        <select id="viewColor">
+          <option value="white" selected>Vue des Blancs</option>
+          <option value="black">Vue des Noirs</option>
+        </select>
+      </div>
+      <div id="joinColorWrap">
+        <label for="joinColor">Rejoindre comme</label>
+        <select id="joinColor">
+          <option value="white">Blancs</option>
+          <option value="black">Noirs</option>
+          <option value="spectate" selected>Spectateur (regarder sans jouer)</option>
+        </select>
+      </div>
+      <div style="margin-top:10px;">
+        <button id="btnJoin">Rejoindre</button>
+      </div>
+      <p class="players" id="players"></p>
+      </div>
+      <div id="puzzleStats" style="display:none; margin-top:10px; font-size:12px;"></div>
+    </div>
+    <div class="card">
+      <h1>Coups</h1>
+      <div id="gameStatus"></div>
+      <button id="btnResign" style="display:none; background: var(--blunder); margin-bottom: 6px;">Abandonner la partie</button>
+      <div class="navbtns">
+        <button id="btnFirst" title="Position initiale (avant le 1er coup)">⏮</button>
+        <button id="btnPrev" title="Coup précédent (←)">◀</button>
+        <button id="btnNext" title="Coup suivant (→)">▶</button>
+        <button id="btnLast" title="Dernier coup / direct">⏭</button>
+      </div>
+      <div id="moves"><i>Aucune partie en cours.</i></div>
+      <div id="evalchart" class="evalchart" style="display:none;"></div>
+      <div id="evallegend" class="evallegend" style="display:none;"></div>
+    </div>
+  </div>
+</div>
+<script src="util.js?v=__BUILD__"></script>
+<script src="pieces.js?v=__BUILD__"></script>
+<script src="app.js?v=__BUILD__"></script>
+
+</body>
+</html>

@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
+Caddyfile
+node_modules/
+DELIVERY/
+data/
+prompt.txt
+*AGENTS*.md

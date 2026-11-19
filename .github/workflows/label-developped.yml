@@ -1,0 +1,60 @@
+# Cycle de vie des issues (3 états) :
+#   open       -> issue créée
+#   developped -> label posé automatiquement quand la PR est MERGÉE dans main
+#                 (l'issue RESTE ouverte : pas de fermeture automatique)
+#   closed     -> validation par le propriétaire (fermeture manuelle)
+#
+# L'issue n'est jamais fermée par un robot : seul le label "developped" est posé.
+name: Label developped
+
+on:
+  pull_request:
+    types: [closed]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: "Numéro de PR (mergée) dont il faut labelliser les issues liées"
+        required: true
+        type: number
+
+permissions:
+  issues: write
+  pull-requests: read
+
+jobs:
+  label-developped:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const prNumber = context.eventName === 'workflow_dispatch'
+              ? Number(github.event.inputs.pr_number)
+              : context.payload.pull_request.number;
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner, repo: context.repo.repo, pull_number: prNumber,
+            });
+            // Issues référencées dans le titre et le corps de la PR (#49, #51...)
+            const text = `${pr.title}\n${pr.body || ''}`;
+            const nums = [...new Set([...text.matchAll(/#(\d+)/g)].map(m => parseInt(m[1], 10)))];
+            core.info(`PR #${prNumber} (merged=${pr.merged}) -> issues référencées: ${nums.join(', ') || 'aucune'}`);
+            for (const n of nums) {
+              try {
+                const { data: issue } = await github.rest.issues.get({
+                  owner: context.repo.owner, repo: context.repo.repo, issue_number: n,
+                });
+                if (issue.pull_request) continue; // c'est une PR, pas une issue
+                await github.rest.issues.addLabels({
+                  owner: context.repo.owner, repo: context.repo.repo, issue_number: n,
+                  labels: ['developped'],
+                });
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner, repo: context.repo.repo, issue_number: n,
+                  body: `Label \`developped\` posé automatiquement : corrigée et mergée dans \`main\` via PR #${prNumber}. L'issue reste ouverte en attente de validation (fermeture = \`closed\`).`,
+                });
+                core.info(`Issue #${n}: label developped posé (state=${issue.state})`);
+              } catch (err) {
+                core.warning(`Issue #${n}: ignorée (${err.message})`);
+              }
+            }

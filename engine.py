@@ -1,0 +1,148 @@
+"""Moteur d'échecs local : negamax alpha-beta avec évaluation matérielle.
+
+Si un binaire Stockfish est disponible sur la machine, il est utilisé
+automatiquement en priorité ; sinon on retombe sur le moteur intégré.
+"""
+
+from __future__ import annotations
+
+import atexit
+import contextlib
+import random
+import shutil
+import threading
+
+import chess
+
+PIECE_VALUES = {
+    chess.PAWN: 100,
+    chess.KNIGHT: 320,
+    chess.BISHOP: 330,
+    chess.ROOK: 500,
+    chess.QUEEN: 900,
+    chess.KING: 20000,
+}
+
+CENTER_BONUS = {
+    chess.D4: 10, chess.E4: 10, chess.D5: 10, chess.E5: 10,
+    chess.C4: 5, chess.F4: 5, chess.C5: 5, chess.F5: 5,
+    chess.D3: 5, chess.E3: 5, chess.D6: 5, chess.E6: 5,
+}
+
+LEVEL_DEPTH = {"easy": 1, "medium": 2, "hard": 3}
+
+
+def _stockfish_path() -> str | None:
+    return shutil.which("stockfish")
+
+
+# Process Stockfish persistant partagé entre les coups du moteur (issue #63,
+# bonus) : évite de spawner un process par coup (~100 ms de spawn chacun).
+# Protégé par un lock : SimpleEngine n'est pas thread-safe. État dans un dict
+# mutable (pas de `global`, PLW0603).
+_stockfish_lock = threading.Lock()
+_stockfish_state: dict = {"proc": None}
+
+
+def _spawn_stockfish():
+    """(Re)crée le process Stockfish persistant. À appeler sous le lock."""
+    import chess.engine
+
+    proc = chess.engine.SimpleEngine.popen_uci(_stockfish_path())
+    _stockfish_state["proc"] = proc
+    return proc
+
+
+def _close_stockfish() -> None:
+    """Ferme proprement le process persistant (appelé à la sortie du process)."""
+    with _stockfish_lock:
+        proc = _stockfish_state["proc"]
+        if proc is not None:
+            with contextlib.suppress(Exception):
+                proc.quit()
+            _stockfish_state["proc"] = None
+
+
+atexit.register(_close_stockfish)
+
+
+class Engine:
+    def __init__(self, level: str = "medium"):
+        self.level = level if level in LEVEL_DEPTH else "medium"
+        self._stockfish = _stockfish_path()
+
+    def choose_move(self, board: chess.Board) -> chess.Move | None:
+        moves = list(board.legal_moves)
+        if not moves:
+            return None
+        if self._stockfish:
+            return self._stockfish_move(board, moves)
+        return self._builtin_move(board, moves)
+
+    def _stockfish_move(self, board: chess.Board, moves: list[chess.Move]) -> chess.Move:
+        import chess.engine
+
+        from analysis import engine_options  # Threads/Hash (issues #54/#63)
+
+        depth = {"easy": 4, "medium": 8, "hard": 12}[self.level]
+        # Process persistant partagé (issue #63, bonus) : un seul spawn pour
+        # tous les coups, recréé si le process meurt. Lock : SimpleEngine
+        # n'est pas thread-safe.
+        with _stockfish_lock:
+            proc = _stockfish_state["proc"] or _spawn_stockfish()
+            try:
+                # mono-thread si depth <= 10, multi-cœurs au-delà (issues #54/#63)
+                proc.configure(engine_options(depth))
+                result = proc.play(board, chess.engine.Limit(depth=depth))
+            except chess.engine.EngineError:
+                # process mort : on le respawn une fois
+                _stockfish_state["proc"] = None
+                proc = _spawn_stockfish()
+                proc.configure(engine_options(depth))
+                result = proc.play(board, chess.engine.Limit(depth=depth))
+        if result.move in moves:
+            return result.move
+        return random.choice(moves)
+
+    def _builtin_move(self, board: chess.Board, moves: list[chess.Move]) -> chess.Move:
+        if self.level == "easy" and random.random() < 0.35:
+            return random.choice(moves)
+        depth = LEVEL_DEPTH[self.level]
+        best_score = -10**9
+        best = moves[0]
+        random.shuffle(moves)
+        for move in moves:
+            board.push(move)
+            score = -self._negamax(board, depth - 1, -10**9, 10**9)
+            board.pop()
+            if score > best_score:
+                best_score = score
+                best = move
+        return best
+
+    def _negamax(self, board: chess.Board, depth: int, alpha: int, beta: int) -> int:
+        if board.is_checkmate():
+            return -100000 + (10 - depth)
+        if board.is_game_over():
+            return 0
+        if depth == 0:
+            return self._evaluate(board)
+        best = -10**9
+        for move in board.legal_moves:
+            board.push(move)
+            score = -self._negamax(board, depth - 1, -beta, -alpha)
+            board.pop()
+            best = max(best, score)
+            alpha = max(alpha, best)
+            if alpha >= beta:
+                break
+        return best
+
+    def _evaluate(self, board: chess.Board) -> int:
+        score = 0
+        for square, piece in board.piece_map().items():
+            value = PIECE_VALUES[piece.piece_type]
+            if square in CENTER_BONUS:
+                value += CENTER_BONUS[square]
+            score += value if piece.color == board.turn else -value
+        return score
