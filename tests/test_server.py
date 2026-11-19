@@ -24,19 +24,19 @@ def test_new_game_defaults_free():
 
 
 def test_new_game_with_names():
-    r = server.new_game(white="Nicolas", black="Agent IA")
-    assert r["white_name"] == "Nicolas"
+    r = server.new_game(white="Alice", black="Agent IA")
+    assert r["white_name"] == "Alice"
     assert r["black_name"] == "Agent IA"
 
 
 def test_new_game_engine_black():
-    r = server.new_game(white="Nicolas", black="Moteur", engine_color="black")
+    r = server.new_game(white="Alice", black="Moteur", engine_color="black")
     assert r["engine_color"] == "black"
     assert r["turn"] == "white"
 
 
 def test_new_game_engine_white_plays_first():
-    r = server.new_game(white="Moteur", black="Nicolas", engine_color="white")
+    r = server.new_game(white="Moteur", black="Alice", engine_color="white")
     assert r["engine_move"] is not None
     assert r["turn"] == "black"
     assert r["white_name"] == "Moteur"
@@ -156,7 +156,7 @@ def test_unknown_game_rejected():
 
 
 def test_anyone_can_play_any_side_by_id():
-    gid = server.new_game(white="Nicolas", black="Agent")["game_id"]
+    gid = server.new_game(white="Alice", black="Agent")["game_id"]
     assert server.play_move(gid, "e4", color="white")["move_played"] == "e4"
     assert server.play_move(gid, "e6", color="black")["move_played"] == "e6"
     assert server.play_move(gid, "d4", color="white")["move_played"] == "d4"

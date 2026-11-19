@@ -57,33 +57,35 @@ Le serveur MCP est alors joignable sur :
 https://chess.votre-domaine.tld/mcp
 ```
 
-## 3 bis. Déploiement sur la Raspberry Pi (production mazurkiewicz1.zapto.org)
+## 3 bis. Déploiement sur une machine dédiée (production)
 
-Le serveur exposé publiquement tourne sur une **Raspberry Pi du LAN** : on y
-accède simplement par **`ssh pi-mcp`** (alias défini dans `~/.ssh/config` :
-HostName 192.168.2.3, User nicolas, IdentityFile `~/.ssh/id_ed25519_pi` —
-inutile de retenir l'IP ni l'utilisateur). La box redirige les ports 80/443
-vers la Pi, et Caddy (conteneur Docker) y sert le HTTPS Let's Encrypt.
+Le serveur exposé publiquement tourne sur une **machine dédiée du LAN** : on
+y accède simplement par **`ssh prod`** (alias défini dans `~/.ssh/config` :
+`HostName <ip-du-serveur>`, `User <votre-user>`,
+`IdentityFile ~/.ssh/<votre-cle>` — inutile de retenir l'IP ni l'utilisateur).
+La box redirige les ports 80/443 vers cette machine, et Caddy (conteneur
+Docker) y sert le HTTPS Let's Encrypt.
 Docker + Compose y sont installés ; prérequis une fois pour toutes :
-`sudo usermod -aG docker nicolas` (puis re-login SSH) pour utiliser le socket
-Docker sans mot de passe.
+`sudo usermod -aG docker <votre-user>` (puis re-login SSH) pour utiliser le
+socket Docker sans mot de passe.
 
-Mise à jour après chaque merge dans `main` — la Pi n'ayant pas de credentials
-GitHub, on **pousse** `main` depuis le poste de travail via SSH (le clone de
-production est `~/lichess-mcp` sur la Pi ; `.env`/`Caddyfile` y sont hors git
-et préservés ; `receive.denyCurrentBranch=updateInstead` y est réglé une fois
-pour toutes pour accepter le push sur `main`) :
+Mise à jour après chaque merge dans `main` — la machine de production n'ayant
+pas de credentials GitHub, on **pousse** `main` depuis le poste de travail via
+SSH (le clone de production est `~/lichess-mcp` sur la machine ; `.env` /
+`Caddyfile` y sont hors git et préservés ;
+`receive.denyCurrentBranch=updateInstead` y est réglé une fois pour toutes
+pour accepter le push sur `main`) :
 
 ```bash
-# 1. worktree propre sur la Pi (écarte les patches locaux non commités)
-ssh pi-mcp 'cd ~/lichess-mcp && git checkout -- .'
+# 1. worktree propre sur la machine de production (écarte les patches locaux)
+ssh prod 'cd ~/lichess-mcp && git checkout -- .'
 # 2. push de main vers le clone de production
-ssh pi-mcp 'cd ~/lichess-mcp && git config receive.denyCurrentBranch'  # updateInstead, réglé 1x
-git push ssh://pi-mcp/home/nicolas/lichess-mcp main:main
+ssh prod 'cd ~/lichess-mcp && git config receive.denyCurrentBranch'  # updateInstead, réglé 1x
+git push prod:~/lichess-mcp main:main
 # 3. rebuild du conteneur app
-ssh pi-mcp 'cd ~/lichess-mcp && docker compose build --build-arg GIT_COMMIT=$(git rev-parse --short HEAD) && docker compose up -d'
+ssh prod 'cd ~/lichess-mcp && docker compose build --build-arg GIT_COMMIT=$(git rev-parse --short HEAD) && docker compose up -d'
 # 4. vérification
-curl -s -o /dev/null -w "%{http_code}\n" https://mazurkiewicz1.zapto.org/   # attendu : 200
+curl -s -o /dev/null -w "%{http_code}\n" https://chess.votre-domaine.tld/   # attendu : 200
 ```
 
 `up -d --build` ne recrée que le conteneur app (pas de `down`) : Caddy reste

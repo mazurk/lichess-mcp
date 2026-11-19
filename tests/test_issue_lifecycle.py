@@ -1,15 +1,16 @@
-"""Tests du cycle de vie des issues GitHub (3 états : open / developped / closed).
+"""Tests du cycle de vie des issues GitHub (4 états : open / developped / deployed / closed).
 
 Vérifie que le workflow `.github/workflows/label-developped.yml` pose bien le
 label `developped` au merge d'une PR **sans jamais fermer l'issue**, et que
-AGENTS.md documente ce cycle de vie.
+docs/ISSUES.md documente ce cycle de vie (AGENTS.md, le manuel de l'agent,
+vit désormais dans le dépôt `mazurk/agents` — hors de ce dépôt public).
 """
 
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 WORKFLOW = REPO / ".github" / "workflows" / "label-developped.yml"
-AGENTS = REPO / "AGENTS.md"
+ISSUES_DOC = REPO / "docs" / "ISSUES.md"
 
 
 def test_label_developped_workflow_exists():
@@ -45,16 +46,16 @@ def test_workflow_labels_but_never_closes():
     assert "issues.update" not in text
 
 
-def test_agents_md_documents_four_issue_states():
-    """AGENTS.md documente les 4 états : open / developped / deployed / closed."""
-    text = AGENTS.read_text(encoding="utf-8")
+def test_issues_doc_documents_four_issue_states():
+    """docs/ISSUES.md documente les 4 états : open / developped / deployed / closed."""
+    text = ISSUES_DOC.read_text(encoding="utf-8")
     for state in ("open", "developped", "deployed", "closed"):
-        assert state in text, f"état {state} manquant dans AGENTS.md"
+        assert state in text, f"état {state} manquant dans docs/ISSUES.md"
     assert "label-developped.yml" in text
-    # pratique : l'agent ne ferme pas les issues, c'est Nicolas qui valide
-    assert "ne ferme" in text
-    # pratique : l'agent pose lui-même le label deployed après le déploiement Pi
-    assert "deployed" in text and "déploiement Pi" in text
+    # pratique : l'agent ne ferme pas les issues, c'est le propriétaire qui valide
+    assert "jamais fermée automatiquement" in text
+    # pratique : l'agent pose lui-même le label deployed après le déploiement serveur
+    assert "deployed" in text and "serveur de production" in text
 
 
 def test_issues_md_documents_four_states():
@@ -65,22 +66,18 @@ def test_issues_md_documents_four_states():
     assert "label:deployed is:open" in text
 
 
-def test_agents_md_requires_issue_before_any_bugfix():
+def test_issues_doc_requires_issue_before_any_bugfix():
     """Règle « bug = issue d'abord » : un bug sans issue GitHub doit d'abord
     donner lieu à une issue créée AVANT le correctif (état open)."""
-    text = AGENTS.read_text(encoding="utf-8")
+    text = " ".join(ISSUES_DOC.read_text(encoding="utf-8").split())
     assert "Bug = issue d'abord" in text
-    assert "la créer AVANT de commencer" in text
     assert "Aucun correctif de bug sans issue préalable" in text
-    # la doc utilisateur reflète la même règle
-    issues_doc = (REPO / "docs" / "ISSUES.md").read_text(encoding="utf-8")
-    assert "Bug = issue d'abord" in issues_doc
 
 
-def test_agents_md_documents_connector_update_rule():
+def test_issues_doc_documents_connector_update_rule():
     """Règle « connecteur MCP à mettre à jour » : quand une livraison change les
-    outils exposés, je dois le dire dans l'issue ET dans le chat (AGENTS.md)."""
-    text = AGENTS.read_text(encoding="utf-8")
+    outils exposés, il faut le dire dans l'issue ET dans le chat."""
+    text = ISSUES_DOC.read_text(encoding="utf-8")
     assert "Connecteur MCP à mettre à jour" in text
     assert "dans l'issue" in text and "dans le chat" in text
     assert "Studio Mistral" in text

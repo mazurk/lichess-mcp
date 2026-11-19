@@ -1,7 +1,7 @@
 """Serveur MCP d'échecs hors ligne, inspiré de Lichess.
 
 Aucune connexion à lichess.org : les parties se jouent en local. Chaque camp
-est identifié par un nom de joueur ("Nicolas", "Agent IA", "Moteur"...).
+est identifié par un nom de joueur ("Alice", "Agent IA", "Moteur"...).
 Le moteur local n'est qu'un joueur optionnel désigné par son camp
 (engine_color) ; une partie libre laisse les deux camps joués de l'extérieur
 (humains ou agents, quiconque connaît l'identifiant de la partie).
@@ -54,8 +54,8 @@ def _build_auth() -> TokenVerifier | None:
 # Version du logiciel, affichée dans le coin haut gauche de l'interface web
 # (badge #versionBadge) pour valider rapidement la version déployée.
 # Le commit court est injecté au build Docker (ARG GIT_COMMIT, voir Dockerfile
-# et AGENTS.md §6) et exposé via /web/api/version.
-__version__ = "0.05"
+# et docs/DEPLOIEMENT.md §6) et exposé via /web/api/version.
+__version__ = "0.06"
 
 
 def _git_commit() -> str | None:
@@ -121,7 +121,7 @@ ANALYSIS_JOBS: dict[str, dict] = {}
 _ANALYSIS_LOCK = threading.Lock()
 # File d'attente sérielle des analyses (complément issue #73) : une seule
 # analyse "running" à la fois sur tout le serveur — deux Stockfish concurrents
-# saturaient le SoC de la Pi (ralentissement ~4x observé) ; les demandes
+# saturaient le CPU du serveur (ralentissement ~4x observé) ; les demandes
 # suivantes sont "queued" avec leur position (queue_pos, 1 = tête de file),
 # progression bloquée à 0 tant que le job n'est pas passé "running".
 _ANALYSIS_QUEUE: list[str] = []  # game_ids "queued", ordre FIFO
@@ -1865,7 +1865,7 @@ def _queue_pos(game_id: str) -> int | None:
 def _analysis_worker() -> None:
     """Worker global des analyses (complément issue #73) : dépile les jobs
     "queued" dans l'ordre FIFO et les exécute UN PAR UN — jamais deux analyses
-    Stockfish en parallèle sur le serveur (la Pi ne le supporterait pas)."""
+    Stockfish en parallèle sur le serveur (le serveur ne le supporterait pas)."""
     while True:
         with _ANALYSIS_COND:
             while True:

@@ -7,7 +7,7 @@ format Lichess (FEN + coups UCI).
 
 ## Fonctionnalités
 
-- **Joueurs nommés** : chaque camp porte un nom (« Nicolas », « Agent IA »,
+- **Joueurs nommés** : chaque camp porte un nom (« Alice », « Agent IA »,
   « Moteur »...) — plus d'ambiguïté sur qui joue quoi. Quiconque connaît
   l'identifiant d'une partie peut jouer un camp via `play_move(color=...)` :
   deux agents, deux humains, ou un mélange.

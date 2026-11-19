@@ -5,7 +5,7 @@
 #
 # `name:` fige le nom de projet compose : quelle que soit la copie du dépôt
 # depuis laquelle on lance compose (clone de production ~/lichess-mcp sur la
-# Raspberry Pi, voir docs/DEPLOIEMENT.md), c'est le MÊME projet qui est géré
+# machine hôte dédiée, voir docs/DEPLOIEMENT.md), c'est le MÊME projet qui est géré
 # (conteneurs, volumes caddy_data, ports 80/443).
 
 name: lichess-mcp
