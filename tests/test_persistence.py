@@ -38,10 +38,10 @@ def _state_file(tmp_path):
 
 
 def test_game_persisted_and_reloaded(tmp_path):
-    gid = server.new_game(white="Nicolas", black="Agent IA", clock="10+0")["game_id"]
-    server.join_game(gid, "Nicolas", color="white")
+    gid = server.new_game(white="Alice", black="Agent IA", clock="10+0")["game_id"]
+    server.join_game(gid, "Alice", color="white")
     server.join_game(gid, "Agent IA", color="black")
-    server.play_move(gid, "e4", color="white", player="Nicolas")
+    server.play_move(gid, "e4", color="white", player="Alice")
     server.play_move(gid, "e5", color="black", player="Agent IA")
     fen_before = server.GAMES[gid]["board"].fen()
     assert _state_file(tmp_path).is_file()  # écrit à chaque mutation
@@ -52,8 +52,8 @@ def test_game_persisted_and_reloaded(tmp_path):
     game = server.GAMES[gid]
     assert game["board"].fen() == fen_before
     assert server.get_moves(gid)["moves"] == ["e4", "e5"]
-    assert game["white_name"] == "Nicolas" and game["black_name"] == "Agent IA"
-    assert game["white_seat"] == "Nicolas" and game["black_seat"] == "Agent IA"
+    assert game["white_name"] == "Alice" and game["black_name"] == "Agent IA"
+    assert game["white_seat"] == "Alice" and game["black_seat"] == "Agent IA"
     assert game["clock_started"] is True
     # horloge des noirs en route (trait aux noirs) : ~10 min, un peu entamée
     assert 599_000 < game["clock_ms"]["black"] <= 600_000
@@ -196,7 +196,7 @@ def test_published_analysis_survives_restart(tmp_path):
     redevenait `analysed=False` dans /web/api/games — elle quittait le mode
     « Analyse » de l'interface et n'apparaissait plus que comme « terminée ».
     """
-    gid = server.new_game(white="Nicolas", black="Agent IA")["game_id"]
+    gid = server.new_game(white="Alice", black="Agent IA")["game_id"]
     server.play_move(gid, "e4", color="white")
     server.GAMES[gid]["analysis"] = {"depth": 12, "evals": [0.31, 0.12], "at": 1700000000.0}
     server.GAMES[gid]["last_analysis_at"] = 1700000000.0

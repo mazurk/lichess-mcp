@@ -7,3 +7,4 @@ Caddyfile
 node_modules/
 DELIVERY/
 data/
+prompt.txt

@@ -487,7 +487,7 @@ function renderBoardLabels() {
   const myWhite = state.your_color !== "black";
   const topColor = myWhite ? "black" : "white";
   const bottomColor = myWhite ? "white" : "black";
-  // Libellé compact et unique par camp : « Blancs — libre » ou « Blancs — Nicolas ».
+  // Libellé compact et unique par camp : « Blancs — libre » ou « Blancs — Alice ».
   // Priorité d'affichage : occupant > moteur > nom > libre.
   const label = (color) => {
     const name = color === "white" ? state.white_name : state.black_name;
@@ -695,7 +695,7 @@ async function refreshGameList() {
   }
 }
 // Badge de version en coin haut gauche (issue #67) : permet de valider
-// rapidement quelle version est déployée sur le serveur (Pi en production).
+// rapidement quelle version est déployée sur le serveur (serveur de production).
 async function loadVersionBadge() {
   try {
     const v = await api("/web/api/version");

@@ -2,7 +2,7 @@
 #   open       -> issue créée
 #   developped -> label posé automatiquement quand la PR est MERGÉE dans main
 #                 (l'issue RESTE ouverte : pas de fermeture automatique)
-#   closed     -> validation par Nicolas (fermeture manuelle)
+#   closed     -> validation par le propriétaire (fermeture manuelle)
 #
 # L'issue n'est jamais fermée par un robot : seul le label "developped" est posé.
 name: Label developped

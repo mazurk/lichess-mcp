@@ -62,7 +62,7 @@ test("escapeHtml : neutralise les payloads XSS classiques", () => {
 });
 
 test("escapeHtml : les noms normaux sont inchangés", () => {
-  assert.equal(escapeHtml("Nicolas"), "Nicolas");
+  assert.equal(escapeHtml("Alice"), "Alice");
   assert.equal(escapeHtml("Agent IA"), "Agent IA");
 });
 

@@ -86,12 +86,12 @@ def test_web_move_ambiguous_san_rejected(client):
 
 @needs_stockfish
 def test_analyze_game_pgn_headers_complete():
-    gid = server.new_game(white="Nicolas", black="Agent IA")["game_id"]
+    gid = server.new_game(white="Alice", black="Agent IA")["game_id"]
     for uci, color in (("f2f3", "white"), ("e7e5", "black"), ("g2g4", "white"), ("d8h4", "black")):
         server.play_move(gid, uci, color=color)
     r = server.analyze_game(gid, depth=6, publish=False, wait=True)
     pgn = r["pgn"]
-    assert '[White "Nicolas"]' in pgn
+    assert '[White "Alice"]' in pgn
     assert '[Black "Agent IA"]' in pgn
     assert '[Result "0-1"]' in pgn  # mat du berger : les noirs gagnent
     assert re.search(r'\[Date "\d{4}\.\d{2}\.\d{2}"\]', pgn)
@@ -123,13 +123,13 @@ def test_analyze_pgn_keeps_source_headers():
 # ---------------------------------------------------------------- 2b) resign(player=...)
 
 def test_resign_by_player():
-    gid = server.new_game(white="Nicolas", black="Agent IA")["game_id"]
-    server.join_game(gid, "Nicolas", color="white")
+    gid = server.new_game(white="Alice", black="Agent IA")["game_id"]
+    server.join_game(gid, "Alice", color="white")
     server.join_game(gid, "Agent IA", color="black")
     r = server.resign(gid, player="Agent IA")
     assert "Agent IA (black) abandonne" in r["game_over"]
-    assert "Nicolas (white) gagne" in r["game_over"]
-    assert r["winner"] == {"name": "Nicolas", "color": "white"}
+    assert "Alice (white) gagne" in r["game_over"]
+    assert r["winner"] == {"name": "Alice", "color": "white"}
 
 
 def test_resign_player_unknown_rejected():

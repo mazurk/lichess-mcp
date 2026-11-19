@@ -33,11 +33,11 @@ def engine_options(depth: int | None = None) -> dict:
     """Options UCI de Stockfish : Threads et Hash (issues #54 et #63).
 
     Par défaut, le process démarre avec 1 seul thread — sur une machine
-    multi-cœur (ex. Raspberry Pi 4 cœurs), l'analyse était ~3x plus lente que
+    multi-cœur (ex. machine modeste à 4 cœurs), l'analyse était ~3x plus lente que
     nécessaire. Threads = min(cœurs, 4) par défaut, Hash = 256 Mo ;
     surcharge possible via LICHESS_MCP_STOCKFISH_THREADS / _HASH.
 
-    Règle (demandée par Nicolas) : **pas de multi-threads si depth <= 10** —
+    Règle projet : **pas de multi-threads si depth <= 10** —
     à faible profondeur, l'overhead de synchronisation des threads coûte plus
     cher que le calcul lui-même, donc on force Threads=1. Au-delà
     (depth > 10), on exploite les cœurs (min(cœurs, 4)).
