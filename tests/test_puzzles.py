@@ -67,6 +67,14 @@ def test_puzzle_database_integrity():
         else:
             assert len(line) % 2 == 0, (
                 f"{p['PuzzleId']}: ligne tactique de longueur impaire {len(line)}")
+        # issue #84 : le solveur joue le camp du DERNIER coup (camp gagnant)
+        parity = 1 if len(line) % 2 == 0 else 0
+        fen_turn_white = chess.Board(p["FEN"]).turn == chess.WHITE
+        solver_is_white = fen_turn_white if parity == 0 else not fen_turn_white
+        winner_is_white = board.turn == chess.BLACK  # après le dernier push
+        assert solver_is_white == winner_is_white, (
+            f"{p['PuzzleId']}: solveur {'blancs' if solver_is_white else 'noirs'} "
+            f"mais dernier coup joué par {'blancs' if winner_is_white else 'noirs'}")
 
 
 def test_puzzles_from_lichess_are_marked():
@@ -105,9 +113,12 @@ def test_next_puzzle_session_and_hints():
 
 
 def _play_line(pid: str, line: list[str], game_id=None) -> dict:
-    """Joue tous les coups du joueur (plies pairs) d'une ligne de puzzle."""
+    """Joue tous les coups du SOLVEUR d'une ligne de puzzle (parité dérivée de
+    la longueur de ligne, issue #84 : ligne paire -> plies impairs)."""
+    puzzle = server.ACTIVE_PUZZLES[pid]["puzzle"] if pid in server.ACTIVE_PUZZLES else None
+    parity = server._puzzle_solver_parity(puzzle) if puzzle else 0
     final = None
-    for i in range(0, len(line), 2):
+    for i in range(parity, len(line), 2):
         final = server.try_puzzle_move(pid, line[i], game_id=game_id)
         assert final["correct"] is True, f"pli {i} {line[i]} refusé : {final}"
     return final
@@ -135,40 +146,47 @@ def test_mate2_full_flow():
 
 
 def test_mate3_flow():
-    """Issue #72 : mat en 3 (ligne lichess de 6 plies) — 3 coups du joueur,
-    réponses auto entre les coups, le mat tombe sur la dernière réponse."""
+    """Issues #72/#84 : mat en 3 (ligne lichess de 6 plies, solveur = plies
+    impairs) — le coup forcé du perdant est joué d'emblée, le solveur joue
+    3 coups, le mat tombe sur son dernier coup."""
     mate3 = next(p for p in server.PUZZLES if p.get("MateIn") == 3)
     server._start_puzzle(mate3)
     pid = mate3["PuzzleId"]
     line = mate3["Moves"].split()
     assert len(line) == 6
+    assert server._puzzle_solver_parity(mate3) == 1
+    # init auto : le ply 0 (camp perdant, au trait dans le FEN) est déjà joué
+    assert server.ACTIVE_PUZZLES[pid]["plies_done"] == 1
+    assert server.ACTIVE_PUZZLES[pid]["board"].turn != chess.Board(mate3["FEN"]).turn
 
-    r1 = server.try_puzzle_move(pid, line[0])
+    r1 = server.try_puzzle_move(pid, line[1])
     assert r1["correct"] is True and "solved" not in r1
-    assert server.ACTIVE_PUZZLES[pid]["plies_done"] == 2
-    r2 = server.try_puzzle_move(pid, line[2])
+    assert server.ACTIVE_PUZZLES[pid]["plies_done"] == 3
+    r2 = server.try_puzzle_move(pid, line[3])
     assert r2["correct"] is True and "solved" not in r2
-    assert server.ACTIVE_PUZZLES[pid]["plies_done"] == 4
-    # dernier coup du joueur (ply 4) puis réponse auto (ply 5) qui conclut
-    r3 = server.try_puzzle_move(pid, line[4])
+    assert server.ACTIVE_PUZZLES[pid]["plies_done"] == 5
+    # dernier coup du solveur (ply 5) : mat et résolu
+    r3 = server.try_puzzle_move(pid, line[5])
     assert r3["correct"] is True and r3["solved"] is True
+    assert "mat en 3 trouvé" in r3["note"]
     assert server.ACTIVE_PUZZLES[pid]["solved"] is True
 
 
 def test_tactic_flow_even_line():
-    """Issue #72 : combinaison tactique (MateIn None, ligne paire lichess) —
-    le puzzle est résolu quand la ligne est entièrement rejouée, y compris
-    quand la dernière réponse automatique conclut."""
+    """Issues #72/#84 : combinaison tactique (MateIn None, ligne paire lichess,
+    solveur = plies impairs) — le coup forcé du perdant est joué d'emblée, le
+    solveur conclut la ligne."""
     tactic = next(p for p in server.PUZZLES
                   if p.get("MateIn") is None and len(p["Moves"].split()) == 2)
     server._start_puzzle(tactic)
     pid = tactic["PuzzleId"]
     line = tactic["Moves"].split()
-    r = server.try_puzzle_move(pid, line[0])
-    assert r["correct"] is True and r["solved"] is True  # réponse auto = fin de ligne
+    assert server.ACTIVE_PUZZLES[pid]["plies_done"] == 1  # line[0] auto-joué
+    r = server.try_puzzle_move(pid, line[1])  # coup du solveur = fin de ligne
+    assert r["correct"] is True and r["solved"] is True
     assert server.ACTIVE_PUZZLES[pid]["solved"] is True
 
-    # combinaison plus longue (4 plies) : deux coups du joueur
+    # combinaison plus longue (4 plies) : deux coups du solveur (1 et 3)
     tactic4 = next(p for p in server.PUZZLES
                    if p.get("MateIn") is None and len(p["Moves"].split()) == 4)
     server._start_puzzle(tactic4)
@@ -196,19 +214,23 @@ def test_mate2_wrong_key_move_rejected():
 
 
 def test_tactic_wrong_move_rejected_and_hint():
-    """Issue #72 : refus sur une tactique -> hint 'suite gagnante'."""
+    """Issues #72/#84 : refus sur une tactique -> hint 'suite gagnante'
+    (coups légaux lus sur le board APRÈS l'auto-init du coup forcé)."""
     tactic = next(p for p in server.PUZZLES if p.get("MateIn") is None)
     server._start_puzzle(tactic)
     pid = tactic["PuzzleId"]
     line = tactic["Moves"].split()
-    board = chess.Board(tactic["FEN"])
+    parity = server._puzzle_solver_parity(tactic)
+    session = server.ACTIVE_PUZZLES[pid]
+    board = session["board"]
+    expected = line[session["plies_done"]]
     for move in board.legal_moves:
-        if move.uci() != line[0]:
+        if move.uci() != expected:
             r = server.try_puzzle_move(pid, move.uci())
             assert r["correct"] is False
             assert "suite gagnante" in r["hint"]
             break
-    assert server.ACTIVE_PUZZLES[pid]["plies_done"] == 0
+    assert session["plies_done"] == parity  # auto-init seul a avancé
 
 
 def test_mate1_flow_unchanged():
@@ -334,6 +356,47 @@ def test_puzzle_scores_persisted(monkeypatch, tmp_path):
     server.PUZZLE_SCORES.clear()
     server._load_state()
     assert server.PUZZLE_SCORES.get(mate1["Theme"], {}).get("solved") == saved[mate1["Theme"]]["solved"]
+
+
+def test_solver_orientation_lichess_puzzles():
+    """Issue #84 : sur les puzzles lichess (ligne paire), le solveur joue le
+    camp GAGNANT (dernier coup de la ligne), pas le camp au trait du FEN.
+    Cas cités : 001wR et 0048x (mateIn3)."""
+    for pid in ("001wR", "0048x"):
+        p = next(x for x in server.PUZZLES if x["PuzzleId"] == pid)
+        line = p["Moves"].split()
+        board = chess.Board(p["FEN"])
+        for uci in line:
+            board.push(chess.Move.from_uci(uci))
+        winner_is_white = board.turn == chess.BLACK  # dernier coup joué par l'autre camp
+        r = server.start_puzzle(puzzle_id=pid)
+        assert r["side_to_play"] == ("white" if winner_is_white else "black"), (
+            f"{pid}: side_to_play={r['side_to_play']} attendu "
+            f"{'white' if winner_is_white else 'black'}")
+        # le camp au trait du FEN (perdant) a déjà joué son coup forcé (ply 0)
+        game = server.GAMES[r["game_id"]]
+        assert game["puzzle"]["plies_done"] == 1
+        assert len(game["board"].move_stack) == 1
+        # le coup du perdant (line[0]) est refusé ; celui du solveur accepté
+        res_bad = server.try_puzzle_move(pid, line[0], game_id=r["game_id"])
+        assert res_bad["correct"] is False
+        res_ok = server.try_puzzle_move(pid, line[1], game_id=r["game_id"])
+        assert res_ok["correct"] is True
+        server.delete_game(r["game_id"])
+
+
+def test_generated_puzzles_keep_pair_parity():
+    """Issue #84 : les puzzles générés (ligne impaire) gardent le solveur sur
+    les plies pairs (camp au trait = gagnant)."""
+    gen = next(p for p in server.PUZZLES
+               if server._puzzle_source(p["PuzzleId"]) == "generated")
+    assert server._puzzle_solver_parity(gen) == 0
+    r = server.start_puzzle(puzzle_id=gen["PuzzleId"])
+    game = server.GAMES[r["game_id"]]
+    assert game["puzzle"]["plies_done"] == 0
+    assert r["side_to_play"] == ("white" if chess.Board(gen["FEN"]).turn == chess.WHITE
+                                 else "black")
+    server.delete_game(r["game_id"])
 
 
 def test_analysis_board_nameable():

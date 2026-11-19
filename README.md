@@ -39,7 +39,10 @@ format Lichess (FEN + coups UCI).
   apparaît en temps réel) et vous consultez la résolution sur l'interface web
   (mode **Puzzles**, avec la progression du puzzle et les **scores par thème**
   `puzzle_stats`). Dans les lignes multi-coups, l'adversaire répond
-  automatiquement entre les coups du joueur.
+  automatiquement entre les coups du joueur. **Orientation** : le solveur joue
+  toujours le camp gagnant — pour les puzzles Lichess (ligne de longueur paire)
+  le FEN a le trait au camp perdant, son coup forcé est joué d'emblée et le
+  solveur joue les demi-coups impairs.
 - **Interface web** : plateau interactif dans le navigateur
   (`http://localhost:8000/`) — jouez à la souris, rejoignez une partie par son
   identifiant, ou regardez en **mode spectateur**. Rendu façon Lichess :
@@ -72,7 +75,7 @@ format Lichess (FEN + coups UCI).
 | `delete_game(game_id)` | Supprime définitivement une partie / un échiquier d'analyse / un puzzle publié (utile pour nettoyer les échiquiers de test) |
 | `list_games(kind)` | Liste les parties du serveur sans besoin de l'identifiant (`kind` = `game`, `analysis`, `puzzle` ou None) : id, joueurs, trait, FEN, statut |
 | `next_puzzle()` | Tire un puzzle (mat en N ou combinaison tactique) |
-| `try_puzzle_move(puzzle_id, move, game_id)` | Propose une solution de puzzle — vous jouez les coups de votre camp, les réponses adverses sont jouées automatiquement entre vos coups ; résolu à la fin de la ligne (ou par mat). Avec `game_id` (puzzle publié), le coup validé est joué sur l'échiquier web. Chaque tentative alimente les scores par thème |
+| `try_puzzle_move(puzzle_id, move, game_id)` | Propose une solution de puzzle — vous jouez les coups du camp gagnant (plies impairs pour les puzzles Lichess, pairs pour les générés), les réponses adverses sont jouées automatiquement entre vos coups ; résolu à la fin de la ligne (ou par mat). Avec `game_id` (puzzle publié), le coup validé est joué sur l'échiquier web. Chaque tentative alimente les scores par thème |
 | `list_puzzles(mate_in, theme)` | Catalogue des puzzles disponibles (filtres `mate_in` ≥ 1 et `theme`, ex. `fork`, `mateIn3`) — ids à passer à `start_puzzle` |
 | `start_puzzle(puzzle_id, name)` | Publie un puzzle en mode **puzzle** (échiquier observable sur le web) pour entraîner l'agent |
 | `puzzle_stats(theme)` | Scores d'entraînement **par thème** (persistés) : `attempts`, `correct`, `failed`, `solved`, `first_try`, `last_puzzle_id`, taux de réussite — filtre optionnel `theme` (None = vue globale). Alimenté par `try_puzzle_move` ; aussi affiché dans le mode Puzzles de l'UI web (`/web/api/puzzle_stats?theme=...`) |

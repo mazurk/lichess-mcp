@@ -55,7 +55,7 @@ def _build_auth() -> TokenVerifier | None:
 # (badge #versionBadge) pour valider rapidement la version déployée.
 # Le commit court est injecté au build Docker (ARG GIT_COMMIT, voir Dockerfile
 # et docs/DEPLOIEMENT.md §6) et exposé via /web/api/version.
-__version__ = "0.08"
+__version__ = "0.09"
 
 
 def _git_commit() -> str | None:
@@ -221,7 +221,8 @@ def _game_from_json(data: dict) -> tuple[str, dict]:
         puzzle = next((p for p in PUZZLES if p["PuzzleId"] == puzzle_id), None)
         if puzzle is not None:
             game["puzzle"] = {"puzzle": puzzle, "board": board,
-                              "plies_done": data.get("puzzle_plies_done", 0)}
+                              "plies_done": data.get("puzzle_plies_done", 0),
+                              "solver_parity": _puzzle_solver_parity(puzzle)}
     return data["game_id"], game
 
 
@@ -306,6 +307,7 @@ def _load_state() -> None:
                 board.push(chess.Move.from_uci(uci))
             ACTIVE_PUZZLES[s["puzzle_id"]] = {
                 "puzzle": puzzle, "board": board, "plies_done": s["plies_done"],
+                "solver_parity": _puzzle_solver_parity(puzzle),
             }
         except Exception as exc:  # noqa: BLE001
             print(f"lichess-mcp: session puzzle {s.get('puzzle_id')} non restaurée : {exc}",
@@ -1396,13 +1398,41 @@ def _forced_mate_in_two_after(board: chess.Board) -> bool:
     return True
 
 
+def _puzzle_solver_parity(puzzle: dict) -> int:
+    """Parité des demi-coups joués par le SOLVEUR (0 = plies pairs, 1 = impairs).
+
+    Issue #84 — convention Lichess Puzzle Database : le FEN a le trait au camp
+    PERDANT (qui vient de jouer un mauvais coup) ; la combinaison gagnante est
+    réalisée par l'autre camp, en dernier (ligne de longueur PAIRE → solveur =
+    plies impairs). Puzzles générés localement : trait au camp gagnant, ligne
+    impaire → solveur = plies pairs. Le camp du dernier coup de la ligne est
+    toujours le camp gagnant.
+    """
+    return 1 if len(puzzle["Moves"].split()) % 2 == 0 else 0
+
+
+def _puzzle_auto_init(board: chess.Board, puzzle: dict) -> int:
+    """Joue automatiquement les coups forcés d'initialisation (camp perdant,
+    convention lichess — issue #84) et renvoie le nombre de plies joués."""
+    line = puzzle["Moves"].split()
+    parity = _puzzle_solver_parity(puzzle)
+    plies_done = 0
+    while plies_done < len(line) and plies_done % 2 != parity:
+        board.push(chess.Move.from_uci(line[plies_done]))
+        plies_done += 1
+    return plies_done
+
+
 def _start_puzzle(puzzle: dict) -> dict:
-    """Initialise une session de puzzle (état multi-coups pour les mats en 2)."""
+    """Initialise une session de puzzle (état multi-coups, orientation solveur
+    issue #84 : coups forcés du camp perdant joués d'emblée)."""
     board = chess.Board(puzzle["FEN"])
+    plies_done = _puzzle_auto_init(board, puzzle)
     session = {
         "puzzle": puzzle,
-        "board": board.copy(stack=False),
-        "plies_done": 0,
+        "board": board.copy(),  # stack conservée : persistance root_fen + moves
+        "plies_done": plies_done,
+        "solver_parity": _puzzle_solver_parity(puzzle),
     }
     ACTIVE_PUZZLES[puzzle["PuzzleId"]] = session
     _persist()
@@ -1577,9 +1607,13 @@ def start_puzzle(puzzle_id: str | None = None,
     game_id = _create_game("Blancs", "Noirs", "medium", None,
                            kind="puzzle", board=board, name=label)
     game = GAMES[game_id]
+    # coups forcés d'initialisation (camp perdant, issue #84) joués d'emblée
+    plies_done = _puzzle_auto_init(game["board"], puzzle)
     # session de puzzle adossée à l'échiquier : les coups validés sont
     # poussés sur game["board"], visible sur le web en temps réel.
-    game["puzzle"] = {"puzzle": puzzle, "board": game["board"], "plies_done": 0}
+    game["puzzle"] = {"puzzle": puzzle, "board": game["board"],
+                      "plies_done": plies_done,
+                      "solver_parity": _puzzle_solver_parity(puzzle)}
     return {
         "game_id": game_id,
         "puzzle_id": puzzle["PuzzleId"],
@@ -1663,7 +1697,9 @@ def _is_alternative_solution(board: chess.Board, parsed: chess.Move,
     probe.push(parsed)
     if probe.is_checkmate():
         return True
-    return (bool(puzzle.get("MateIn", 1) == 2 and plies_done == 0
+    # premier coup du solveur (parité dépend de l'orientation, issue #84)
+    return (bool(puzzle.get("MateIn", 1) == 2
+                 and plies_done == _puzzle_solver_parity(puzzle)
                  and _forced_mate_in_two_after(probe)))
 
 
@@ -1716,6 +1752,7 @@ def try_puzzle_move(puzzle_id: str, move: str,
 
     mate_in = puzzle.get("MateIn", 1)
     theme = puzzle.get("Theme", "")
+    parity = session.get("solver_parity", _puzzle_solver_parity(puzzle))
     matches_line = parsed.uci() == line[plies_done]
     alternative = (not matches_line
                    and _is_alternative_solution(board, parsed, puzzle, plies_done))
@@ -1726,7 +1763,7 @@ def try_puzzle_move(puzzle_id: str, move: str,
                             puzzle_id=puzzle["PuzzleId"])
         _persist()
         note = f"{board.san(parsed)} n'est pas la solution. Réessayez."
-        if board.move_stack and plies_done > 0 and plies_done % 2 == 0:
+        if board.move_stack and plies_done > 0 and plies_done % 2 == parity:
             note += f" (rappel : l'adversaire a joué {_last_san(board)}.)"
         if mate_in:
             hint = ("Cherchez un mat en un coup."
@@ -1745,25 +1782,27 @@ def try_puzzle_move(puzzle_id: str, move: str,
 
 def _apply_puzzle_move(puzzle: dict, session: dict, parsed: chess.Move,
                        alternative: bool) -> dict:
-    """Joue le coup validé du joueur sur la session, ajoute la réponse
-    automatique de l'adversaire (plies impairs) et conclut si la ligne est
-    terminée. Issue #72 : la ligne des puzzles lichess est de longueur paire —
-    la réponse automatique de l'adversaire peut conclure (y compris par mat).
-    Met à jour les scores du thème et persiste."""
+    """Joue le coup validé du solveur sur la session, ajoute la réponse
+    automatique de l'adversaire (parité opposée au solveur) et conclut si la
+    ligne est terminée. Issues #72/#84 : la ligne des puzzles lichess est de
+    longueur paire et le solveur joue les plies IMPAIRS (le camp au trait du
+    FEN est le perdant) — la réponse automatique peut conclure (y compris par
+    mat). Met à jour les scores du thème et persiste."""
     board = session["board"]
     line = puzzle["Moves"].split()
     theme = puzzle.get("Theme", "")
     mate_in = puzzle.get("MateIn", 1)
+    parity = session.get("solver_parity", _puzzle_solver_parity(puzzle))
     plies_done = session["plies_done"]
-    first_ply = (plies_done == 0)
+    first_ply = (plies_done == parity)
     san = board.san(parsed)
     board.push(parsed)
     plies_done += 1
     # résolu si mat effectif (ligne ou variante matante) ou fin de ligne
     solved_now = board.is_checkmate() or plies_done >= len(line)
     reply_san = None
-    if not solved_now and plies_done % 2 == 1:
-        # réponse de l'adversaire : jouée automatiquement (plies impairs)
+    while not solved_now and plies_done < len(line) and plies_done % 2 != parity:
+        # réponse de l'adversaire : jouée automatiquement (parité opposée)
         reply = chess.Move.from_uci(line[plies_done])
         if reply not in board.legal_moves:
             # coup clé alternatif : la réponse du catalogue peut être illégale
