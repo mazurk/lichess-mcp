@@ -31,12 +31,15 @@ format Lichess (FEN + coups UCI).
   threads coûte plus cher que le calcul à faible profondeur.
 - **Règles complètes** gérées par [python-chess](https://github.com/niklasf/python-chess) :
   promotion, prise en passant, roc, pat, règle des 50 coups, répétition triple.
-- **Puzzles** au format Lichess : mats en un ou deux coups à résoudre via
+- **Puzzles** au format Lichess : mats en 1/2/3 coups **et combinaisons
+  tactiques** (fourchettes, clouages, mats thématiques…) à résoudre via
   l'agent (`next_puzzle`/`try_puzzle_move`), ou **publiés en mode puzzle**
   (`start_puzzle`) : l'échiquier est matérialisé sur le serveur, l'agent
   s'entraîne avec `try_puzzle_move(..., game_id=...)` (chaque coup validé
   apparaît en temps réel) et vous consultez la résolution sur l'interface web
-  (mode **Puzzles**, avec la progression du puzzle).
+  (mode **Puzzles**, avec la progression du puzzle et les **scores par thème**
+  `puzzle_stats`). Dans les lignes multi-coups, l'adversaire répond
+  automatiquement entre les coups du joueur.
 - **Interface web** : plateau interactif dans le navigateur
   (`http://localhost:8000/`) — jouez à la souris, rejoignez une partie par son
   identifiant, ou regardez en **mode spectateur**. Rendu façon Lichess :
@@ -68,10 +71,11 @@ format Lichess (FEN + coups UCI).
 | `get_moves(game_id, from_ply)` | Coups joués en SAN (+ UCI), dans l'ordre ; `from_ply` ne renvoie que la fin (index 0-based du 1er demi-coup) |
 | `delete_game(game_id)` | Supprime définitivement une partie / un échiquier d'analyse / un puzzle publié (utile pour nettoyer les échiquiers de test) |
 | `list_games(kind)` | Liste les parties du serveur sans besoin de l'identifiant (`kind` = `game`, `analysis`, `puzzle` ou None) : id, joueurs, trait, FEN, statut |
-| `next_puzzle()` | Tire un puzzle (mat en 1 ou en 2) |
-| `try_puzzle_move(puzzle_id, move, game_id)` | Propose une solution de puzzle — pour un mat en 2 : coup clé validé, réponse adverse jouée automatiquement, puis coup de mat. Avec `game_id` (puzzle publié), le coup validé est joué sur l'échiquier web |
-| `list_puzzles(mate_in)` | Catalogue des puzzles disponibles (filtre 1 ou 2) — ids à passer à `start_puzzle` |
+| `next_puzzle()` | Tire un puzzle (mat en N ou combinaison tactique) |
+| `try_puzzle_move(puzzle_id, move, game_id)` | Propose une solution de puzzle — vous jouez les coups de votre camp, les réponses adverses sont jouées automatiquement entre vos coups ; résolu à la fin de la ligne (ou par mat). Avec `game_id` (puzzle publié), le coup validé est joué sur l'échiquier web. Chaque tentative alimente les scores par thème |
+| `list_puzzles(mate_in, theme)` | Catalogue des puzzles disponibles (filtres `mate_in` ≥ 1 et `theme`, ex. `fork`, `mateIn3`) — ids à passer à `start_puzzle` |
 | `start_puzzle(puzzle_id, name)` | Publie un puzzle en mode **puzzle** (échiquier observable sur le web) pour entraîner l'agent |
+| `puzzle_stats()` | Scores d'entraînement **par thème** : coups tentés/validés, puzzles résolus, résolus au 1er coup, taux de réussite — aussi affichés dans le mode Puzzles de l'UI web (`/web/api/puzzle_stats`) |
 | `analyze_game(game_id, depth, publish, wait)` | Lance l'analyse Stockfish d'une partie/échiquier **en asynchrone** : rend immédiatement `{analysis_id, status, depth, moves}` (le client MCP a un timeout de 120 s/appel) ; `wait=True` bloque jusqu'au bout (file comprise). **File sérielle** : une seule analyse exécutée à la fois sur le serveur — si une autre est active, la demande part en file (`status: "queued"`, `queue_pos` 1 = prochaine, `progress` à 0). Réponse complète (PGN annoté en-têtes complets White/Black/Result/Date + coups critiques) via `analysis_status`. Second appel sur la même partie → `already_running`. `publish=True` publie sur l'UI web (`analysis_running: true` pendant le calcul, `analysis_queued: true` en file). Alerte « triche détectée » (`cheat_detected`) si partie/puzzle en cours — sauf analyse préexistante |
 | `analysis_status(game_id)` | Suivi de l'analyse asynchrone : `{status: queued/running/done/failed/none, progress, total, elapsed_s, queue_pos?}` ; `done` = réponse complète (pgn, evals, critical, published…) |
 | `analyze_pgn(pgn, depth)` | Analyse Stockfish d'un PGN externe (ex. exporté de lichess.org) |
@@ -156,25 +160,30 @@ demande le token une fois et le mémorise localement.
 
 ## Ajouter des puzzles
 
-`puzzles.json` contient **539 puzzles** : 222 mats en 1 et 317 mats en 2,
-validés (position strictement légale, ligne légale, mat final authentique,
-« mat en N exactement »). La base intègre des puzzles issus de la
+`puzzles.json` contient **2264 puzzles** issus de la
 [Lichess Puzzle Database](https://database.lichess.org/#puzzles) (domaine
-public) ; les positions illégales de l'ancienne base ont été retirées.
+public) : mats en 1/2/3+ et combinaisons tactiques (fourchettes, clouages,
+déflections, mats thématiques…), tous validés (position strictement légale,
+ligne légale, mat final authentique pour les thèmes de mat). Les lignes des
+puzzles Lichess sont de longueur **paire** : le joueur (camp au trait dans le
+FEN) joue les demi-coups pairs, l'adversaire répond automatiquement les
+demi-coups impairs — la dernière réponse peut conclure (y compris par mat).
 Format :
 
 ```json
 {
-  "PuzzleId": "mate2_001",
+  "PuzzleId": "00008",
   "FEN": "...",
-  "Moves": "e2e4 e7e5 ...",   // ligne UCI complète (2N-1 demi-coups)
-  "MateIn": 2,
-  "Theme": "mateIn2"
+  "Moves": "f2g3 e6e7 ...",   // ligne UCI complète (2N ou 2N-1 demi-coups)
+  "Rating": 1819,
+  "Theme": "hangingPiece",
+  "MateIn": null,             // N si la ligne finit par un mat (thème *Mate), sinon null (tactique)
+  "Source": "lichess.org/database (lichess_db_puzzle.csv)"
 }
 ```
 
 Pour enrichir la base, importez des puzzles au format
 [Lichess Puzzle Database](https://database.lichess.org/#puzzles) (champ
-`Themes` = `mateIn1`/`mateIn2`) en conservant ce format — seules les
-positions strictement légales sont acceptées (vérifiées par
-`tests/test_puzzles.py`).
+`Themes` : `mateIn3`, `fork`, `pin`, `hangingPiece`, `backRankMate`…) en
+conservant ce format — seules les positions strictement légales sont
+acceptées (vérifiées par `tests/test_puzzles.py`).

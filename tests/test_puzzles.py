@@ -1,4 +1,11 @@
-"""Tests de la base de puzzles et du déroulé multi-coups (mats en 1 et 2)."""
+"""Tests de la base de puzzles et du déroulé multi-coups.
+
+Couvre les mats en 1/2/3 et les combinaisons tactiques (issue #72) : le joueur
+joue les plies pairs (camp au trait dans le FEN), l'adversaire répond
+automatiquement les plies impairs ; la ligne des puzzles lichess est de
+longueur paire (la réponse adverse peut conclure, y compris par le mat).
+Vérifie aussi les scores par thème persistés (PUZZLE_SCORES / puzzle_stats).
+"""
 
 import random
 
@@ -12,58 +19,98 @@ import server
 def _clean_state():
     server.GAMES.clear()
     server.ACTIVE_PUZZLES.clear()
+    server.PUZZLE_SCORES.clear()
     yield
     server.GAMES.clear()
     server.ACTIVE_PUZZLES.clear()
+    server.PUZZLE_SCORES.clear()
+
+
+def _line_is_legal(p: dict) -> chess.Board:
+    board = chess.Board(p["FEN"])
+    assert board.is_valid(), f"position illégale dans {p['PuzzleId']} ({board.status()})"
+    for uci in p["Moves"].split():
+        move = chess.Move.from_uci(uci)
+        assert move in board.legal_moves, f"coup illégal dans {p['PuzzleId']}"
+        board.push(move)
+    return board
 
 
 def test_puzzle_database_size():
-    """La base doit être large et majoritairement des mats en 2."""
-    assert len(server.PUZZLES) >= 280
-    mate2 = [p for p in server.PUZZLES if p.get("MateIn") == 2]
+    """La base doit être large : mats en 1/2/3 et combinaisons tactiques (#72)."""
+    assert len(server.PUZZLES) >= 2000
     mate1 = [p for p in server.PUZZLES if p.get("MateIn", 1) == 1]
-    assert len(mate2) >= 200, f"seulement {len(mate2)} mats en 2"
+    mate2 = [p for p in server.PUZZLES if p.get("MateIn") == 2]
+    mate3 = [p for p in server.PUZZLES if p.get("MateIn") == 3]
+    tactics = [p for p in server.PUZZLES if p.get("MateIn") is None]
     assert len(mate1) >= 40
+    assert len(mate2) >= 200
+    assert len(mate3) >= 100, f"seulement {len(mate3)} mats en 3"
+    assert len(tactics) >= 800, f"seulement {len(tactics)} tactiques"
 
 
 def test_puzzle_database_integrity():
-    """Chaque puzzle : position strictement légale (pas de roi adverse en prise),
-    FEN lisible, ligne légale, mat final authentique, longueur = 2N-1 demi-coups."""
+    """Chaque puzzle : position légale, ligne légale. Si MateIn renseigné :
+    la ligne finit par un mat en 2*MateIn-1 ou 2*MateIn demi-coups. Si
+    MateIn absent (tactique lichess, #72) : ligne de longueur paire."""
     ids = set()
     for p in server.PUZZLES:
         assert p["PuzzleId"] not in ids, f"id dupliqué : {p['PuzzleId']}"
         ids.add(p["PuzzleId"])
-        board = chess.Board(p["FEN"])
-        assert board.is_valid(), f"position illégale dans {p['PuzzleId']} ({board.status()})"
+        board = _line_is_legal(p)
         line = p["Moves"].split()
-        assert len(line) == 2 * p.get("MateIn", 1) - 1
-        for uci in line:
-            move = chess.Move.from_uci(uci)
-            assert move in board.legal_moves, f"coup illégal dans {p['PuzzleId']}"
-            board.push(move)
-        assert board.is_checkmate(), f"pas de mat final dans {p['PuzzleId']}"
+        mate_in = p.get("MateIn", 1)
+        if mate_in is not None:
+            assert len(line) in (2 * mate_in - 1, 2 * mate_in), (
+                f"{p['PuzzleId']}: {len(line)} plies pour mat en {mate_in}")
+            assert board.is_checkmate(), f"pas de mat final dans {p['PuzzleId']}"
+        else:
+            assert len(line) % 2 == 0, (
+                f"{p['PuzzleId']}: ligne tactique de longueur impaire {len(line)}")
 
 
 def test_puzzles_from_lichess_are_marked():
     """Les puzzles récupérés sur lichess.org portent leur source."""
     src = [p for p in server.PUZZLES if str(p.get("Source", "")).startswith("lichess.org")]
     assert len(src) >= 100, f"seulement {len(src)} puzzles sourcés lichess.org"
+    db = [p for p in server.PUZZLES
+          if str(p.get("Source", "")).startswith("lichess.org/database")]
+    assert len(db) >= 1500, f"seulement {len(db)} puzzles de la Puzzle Database (#72)"
 
 
 def test_next_puzzle_session_and_hints():
-    """next_puzzle crée une session ; l'indice dépend du mat en N."""
+    """next_puzzle crée une session ; l'indice dépend du type (mat en N ou
+    combinaison tactique, issue #72)."""
     mate2 = next(p for p in server.PUZZLES if p.get("MateIn") == 2)
     session = server._start_puzzle(mate2)
     assert session["plies_done"] == 0
     assert session["board"].fen() == mate2["FEN"]
 
-    r = server.next_puzzle()
-    assert r["puzzle_id"] in server.ACTIVE_PUZZLES
-    assert r["mate_in"] in (1, 2)
-    if r["mate_in"] == 2:
-        assert "Mat en 2" in r["hint"]
-    else:
-        assert "mat en 1" in r["hint"]
+    random.seed(7)
+    seen = set()
+    for _ in range(60):
+        r = server.next_puzzle()
+        seen.add(r["mate_in"])
+        assert r["puzzle_id"] in server.ACTIVE_PUZZLES
+        assert r["mate_in"] in (1, 2, 3, None)
+        if r["mate_in"] == 2:
+            assert "Mat en 2" in r["hint"]
+        elif r["mate_in"] == 1:
+            assert "mat en 1" in r["hint"]
+        elif r["mate_in"] == 3:
+            assert "Mat en 3" in r["hint"]
+        else:
+            assert "Combinaison tactique" in r["hint"]
+    assert None in seen and 3 in seen  # le nouveau catalogue est bien tiré
+
+
+def _play_line(pid: str, line: list[str], game_id=None) -> dict:
+    """Joue tous les coups du joueur (plies pairs) d'une ligne de puzzle."""
+    final = None
+    for i in range(0, len(line), 2):
+        final = server.try_puzzle_move(pid, line[i], game_id=game_id)
+        assert final["correct"] is True, f"pli {i} {line[i]} refusé : {final}"
+    return final
 
 
 def test_mate2_full_flow():
@@ -87,6 +134,49 @@ def test_mate2_full_flow():
     assert "mat en 2 trouvé" in r2["note"]
 
 
+def test_mate3_flow():
+    """Issue #72 : mat en 3 (ligne lichess de 6 plies) — 3 coups du joueur,
+    réponses auto entre les coups, le mat tombe sur la dernière réponse."""
+    mate3 = next(p for p in server.PUZZLES if p.get("MateIn") == 3)
+    server._start_puzzle(mate3)
+    pid = mate3["PuzzleId"]
+    line = mate3["Moves"].split()
+    assert len(line) == 6
+
+    r1 = server.try_puzzle_move(pid, line[0])
+    assert r1["correct"] is True and "solved" not in r1
+    assert server.ACTIVE_PUZZLES[pid]["plies_done"] == 2
+    r2 = server.try_puzzle_move(pid, line[2])
+    assert r2["correct"] is True and "solved" not in r2
+    assert server.ACTIVE_PUZZLES[pid]["plies_done"] == 4
+    # dernier coup du joueur (ply 4) puis réponse auto (ply 5) qui conclut
+    r3 = server.try_puzzle_move(pid, line[4])
+    assert r3["correct"] is True and r3["solved"] is True
+    assert server.ACTIVE_PUZZLES[pid]["solved"] is True
+
+
+def test_tactic_flow_even_line():
+    """Issue #72 : combinaison tactique (MateIn None, ligne paire lichess) —
+    le puzzle est résolu quand la ligne est entièrement rejouée, y compris
+    quand la dernière réponse automatique conclut."""
+    tactic = next(p for p in server.PUZZLES
+                  if p.get("MateIn") is None and len(p["Moves"].split()) == 2)
+    server._start_puzzle(tactic)
+    pid = tactic["PuzzleId"]
+    line = tactic["Moves"].split()
+    r = server.try_puzzle_move(pid, line[0])
+    assert r["correct"] is True and r["solved"] is True  # réponse auto = fin de ligne
+    assert server.ACTIVE_PUZZLES[pid]["solved"] is True
+
+    # combinaison plus longue (4 plies) : deux coups du joueur
+    tactic4 = next(p for p in server.PUZZLES
+                   if p.get("MateIn") is None and len(p["Moves"].split()) == 4)
+    server._start_puzzle(tactic4)
+    final = _play_line(tactic4["PuzzleId"], tactic4["Moves"].split())
+    assert final["solved"] is True
+    assert "combinaison réussie" in final["note"] or "mat" in final["note"]
+
+
 def test_mate2_wrong_key_move_rejected():
     mate2 = next(p for p in server.PUZZLES if p.get("MateIn") == 2)
     server._start_puzzle(mate2)
@@ -105,6 +195,22 @@ def test_mate2_wrong_key_move_rejected():
     assert server.ACTIVE_PUZZLES[pid]["plies_done"] == 0
 
 
+def test_tactic_wrong_move_rejected_and_hint():
+    """Issue #72 : refus sur une tactique -> hint 'suite gagnante'."""
+    tactic = next(p for p in server.PUZZLES if p.get("MateIn") is None)
+    server._start_puzzle(tactic)
+    pid = tactic["PuzzleId"]
+    line = tactic["Moves"].split()
+    board = chess.Board(tactic["FEN"])
+    for move in board.legal_moves:
+        if move.uci() != line[0]:
+            r = server.try_puzzle_move(pid, move.uci())
+            assert r["correct"] is False
+            assert "suite gagnante" in r["hint"]
+            break
+    assert server.ACTIVE_PUZZLES[pid]["plies_done"] == 0
+
+
 def test_mate1_flow_unchanged():
     mate1 = next(p for p in server.PUZZLES if p.get("MateIn", 1) == 1)
     server._start_puzzle(mate1)
@@ -119,7 +225,7 @@ def test_mate2_mating_move_must_match_line():
     server._start_puzzle(mate2)
     pid = mate2["PuzzleId"]
     line = mate2["Moves"].split()
-    server.try_puzzle_move(pid, line[0])  # clé + réponse adverse
+    server.try_puzzle_move(pid, line[0])  # clé + réponse adverse automatique
 
     board = server.ACTIVE_PUZZLES[pid]["board"]
     for move in board.legal_moves:
@@ -130,20 +236,70 @@ def test_mate2_mating_move_must_match_line():
 
 
 def test_random_puzzle_flow_smoke():
-    """Tirage aléatoire : quel que soit le puzzle, la ligne complète réussit."""
+    """Tirage aléatoire : quel que soit le puzzle (mat en N ou tactique), la
+    ligne complète jouée par plies pairs réussit et résout le puzzle."""
     random.seed(42)
     for _ in range(10):
         r = server.next_puzzle()
         pid = r["puzzle_id"]
         line = server.ACTIVE_PUZZLES[pid]["puzzle"]["Moves"].split()
-        # mat en 1 : un coup ; mat en 2 : clé puis mat
-        if r["mate_in"] == 1:
-            final = server.try_puzzle_move(pid, line[0])
-        else:
-            step = server.try_puzzle_move(pid, line[0])
-            assert step["correct"] is True
-            final = server.try_puzzle_move(pid, line[2])
+        final = _play_line(pid, line)
         assert final["correct"] is True
+        assert final["solved"] is True
+        assert server.ACTIVE_PUZZLES[pid]["solved"] is True
+
+
+def test_puzzle_scores_and_stats():
+    """Issue #72 : chaque try_puzzle_move alimente les scores du thème ;
+    puzzle_stats expose compteurs + taux (total et par thème)."""
+    mate2 = next(p for p in server.PUZZLES if p.get("MateIn") == 2)
+    server._start_puzzle(mate2)
+    pid = mate2["PuzzleId"]
+    line = mate2["Moves"].split()
+    theme = mate2["Theme"]
+    # un mauvais coup d'abord (attempts +1, correct +0)
+    board = chess.Board(mate2["FEN"])
+    wrong = next(m.uci() for m in board.legal_moves if m.uci() != line[0])
+    r = server.try_puzzle_move(pid, wrong)
+    assert r["correct"] is False
+    # puis la ligne complète : 2 coups corrects, résolu au 2e coup
+    _play_line(pid, line)
+
+    s = server.PUZZLE_SCORES[theme]
+    assert s["attempts"] == 3
+    assert s["correct"] == 2
+    assert s["solved"] == 1
+    assert s["first_try"] == 0  # résolu au 2e coup, pas au 1er
+
+    stats = server.puzzle_stats()
+    assert stats["total"]["attempts"] == 3
+    assert stats["total"]["solved"] == 1
+    assert stats["by_theme"][theme]["success_rate"] == round(100 * 2 / 3, 1)
+    assert stats["by_theme"][theme]["first_try_rate"] == 0.0
+
+
+def test_puzzle_scores_first_try():
+    """Issue #72 : un puzzle résolu dès le premier coup compte en first_try."""
+    mate1 = next(p for p in server.PUZZLES if p.get("MateIn", 1) == 1)
+    server._start_puzzle(mate1)
+    server.try_puzzle_move(mate1["PuzzleId"], mate1["Moves"].split()[0])
+    s = server.PUZZLE_SCORES[mate1["Theme"]]
+    assert s["solved"] == 1 and s["first_try"] == 1
+    assert server.puzzle_stats()["by_theme"][mate1["Theme"]]["first_try_rate"] == 100.0
+
+
+def test_puzzle_scores_persisted(monkeypatch, tmp_path):
+    """Issue #72 : les scores par thème survivent à un redémarrage."""
+    monkeypatch.setenv("LICHESS_MCP_STATE_FILE", str(tmp_path / "state.json"))
+    mate1 = next(p for p in server.PUZZLES if p.get("MateIn", 1) == 1)
+    server._start_puzzle(mate1)
+    server.try_puzzle_move(mate1["PuzzleId"], mate1["Moves"].split()[0])
+    assert server.PUZZLE_SCORES[mate1["Theme"]]["solved"] == 1
+    # « redémarrage » : on vide la mémoire et on recharge depuis le disque
+    saved = dict(server.PUZZLE_SCORES)
+    server.PUZZLE_SCORES.clear()
+    server._load_state()
+    assert server.PUZZLE_SCORES.get(mate1["Theme"], {}).get("solved") == saved[mate1["Theme"]]["solved"]
 
 
 def test_analysis_board_nameable():
@@ -199,17 +355,35 @@ def test_try_puzzle_move_on_published_board():
 
 
 def test_list_puzzles_catalog():
-    """list_puzzles expose le catalogue (ids pour start_puzzle), avec filtre mate_in."""
+    """list_puzzles expose le catalogue (ids pour start_puzzle), avec filtres
+    mate_in (>= 1) et theme (issue #72)."""
     r = server.list_puzzles()
     assert r["count"] == len(server.PUZZLES)
     assert {p["puzzle_id"] for p in r["puzzles"]} == {p["PuzzleId"] for p in server.PUZZLES}
     r2 = server.list_puzzles(mate_in=2)
     assert r2["count"] >= 200
     assert all(p["mate_in"] == 2 for p in r2["puzzles"])
+    r3 = server.list_puzzles(mate_in=3)
+    assert r3["count"] >= 100
+    assert all(p["mate_in"] == 3 for p in r3["puzzles"])
     r1 = server.list_puzzles(mate_in=1)
     assert all(p["mate_in"] == 1 for p in r1["puzzles"])
+    # filtre par thème (tactique, issue #72)
+    rf = server.list_puzzles(theme="fork")
+    assert rf["count"] >= 100
+    assert all(p["theme"] == "fork" for p in rf["puzzles"])
+    # combinaisons tactiques de la Puzzle Database = MateIn None (les anciens
+    # puzzles générés du même thème gardent leur MateIn)
+    rt = server.list_puzzles(theme="hangingPiece")
+    db = [p for p in rt["puzzles"] if str(
+        next(x for x in server.PUZZLES if x["PuzzleId"] == p["puzzle_id"])
+        .get("Source", "")).startswith("lichess.org/database")]
+    assert len(db) >= 100
+    assert all(p["mate_in"] is None for p in db)
     with pytest.raises(ValueError):
-        server.list_puzzles(mate_in=3)
+        server.list_puzzles(mate_in=0)
+    with pytest.raises(ValueError):
+        server.list_puzzles(theme="  ")
 
 
 def test_start_puzzle_progress_exposed():

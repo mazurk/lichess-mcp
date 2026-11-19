@@ -603,7 +603,33 @@ function updateMode() {
   document.getElementById("viewColorWrap").style.display = (mode === "analysis") ? "block" : "none";
   document.getElementById("btnJoin").textContent = MODE_LABELS[mode] || "Rejoindre";
   document.getElementById("modeHint").textContent = MODE_HINTS[mode] || "";
+  // panneau des scores par thème, uniquement en mode Puzzles (issue #72)
+  document.getElementById("puzzleStats").style.display = (mode === "puzzle") ? "block" : "none";
+  if (mode === "puzzle") { loadPuzzleStats().catch(() => {}); }
   refreshGameList().catch(() => {});
+}
+
+// Scores d'entraînement par thème de puzzle (issue #72) : taux de coups
+// validés et de résolutions au premier essai, pour cibler l'entraînement.
+async function loadPuzzleStats() {
+  const el = document.getElementById("puzzleStats");
+  const data = await api("/web/api/puzzle_stats", {method: "GET"});
+  const t = data.total || {};
+  let html = '<b>Scores par thème</b> — ' + (t.solved || 0) + ' résolu(s), '
+    + (t.correct || 0) + '/' + (t.attempts || 0) + ' coups OK (' + (t.success_rate || 0) + ' %)'
+    + (t.solved ? ', 1er coup ' + (t.first_try_rate || 0) + ' %' : '') + '<br>';
+  const themes = Object.keys(data.by_theme || {});
+  if (!themes.length) {
+    html += '<i>Aucun essai enregistré pour le moment.</i>';
+  } else {
+    html += themes.map(function (th) {
+      const s = data.by_theme[th];
+      return escapeHtml(th) + ' : ' + s.solved + ' résolu(s) · ' + s.correct + '/' + s.attempts
+        + ' (' + s.success_rate + ' %)'
+        + (s.solved ? ' · 1er coup ' + s.first_try_rate + ' %' : '');
+    }).join('<br>');
+  }
+  el.innerHTML = html;
 }
 
 function filterGamesForMode(games) {

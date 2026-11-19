@@ -55,7 +55,7 @@ def _build_auth() -> TokenVerifier | None:
 # (badge #versionBadge) pour valider rapidement la version déployée.
 # Le commit court est injecté au build Docker (ARG GIT_COMMIT, voir Dockerfile
 # et AGENTS.md §6) et exposé via /web/api/version.
-__version__ = "0.04"
+__version__ = "0.05"
 
 
 def _git_commit() -> str | None:
@@ -91,6 +91,27 @@ PUZZLES_LICHESS: list[dict] = [
 ]
 
 ACTIVE_PUZZLES: dict[str, dict] = {}
+
+# Scores d'entraînement par thème de puzzle (issue #72), persistés :
+# thème -> {attempts, correct, solved, first_try} — attempts = coups tentés,
+# correct = coups validés, solved = puzzles résolus, first_try = résolus dès
+# le premier coup proposé (taux de réussite « du premier coup »).
+PUZZLE_SCORES: dict[str, dict] = {}
+
+
+def _puzzle_scores_bump(theme: str, *, correct: bool, solved: bool,
+                        first_ply: bool) -> None:
+    """Incrémente les compteurs du thème (issue #72). Appelé à chaque
+    try_puzzle_move ; persisté via _persist."""
+    s = PUZZLE_SCORES.setdefault(
+        theme, {"attempts": 0, "correct": 0, "solved": 0, "first_try": 0})
+    s["attempts"] += 1
+    if correct:
+        s["correct"] += 1
+    if solved:
+        s["solved"] += 1
+        if first_ply:
+            s["first_try"] += 1
 
 # Jobs d'analyse asynchrone (issue #73) : game_id -> {status, depth, publish,
 # started_at, progress, total, result, error}. Une seule analyse en cours par
@@ -229,6 +250,7 @@ def _persist() -> None:
                 if "puzzle" in s
             ],
             "cheat_alerts": CHEAT_ALERTS,
+            "puzzle_scores": PUZZLE_SCORES,
             "analysis_jobs": {
                 gid: {k: v for k, v in job.items() if k != "thread"}
                 for gid, job in ANALYSIS_JOBS.items()
@@ -285,6 +307,13 @@ def _load_state() -> None:
             print(f"lichess-mcp: session puzzle {s.get('puzzle_id')} non restaurée : {exc}",
                   file=sys.stderr)
     CHEAT_ALERTS.extend(state.get("cheat_alerts", []))
+    for theme, s in state.get("puzzle_scores", {}).items():
+        # merge défensif : on ne perd pas les compteurs courants si le fichier
+        # est plus récent que la mémoire (redémarrage).
+        cur = PUZZLE_SCORES.setdefault(
+            theme, {"attempts": 0, "correct": 0, "solved": 0, "first_try": 0})
+        for k in ("attempts", "correct", "solved", "first_try"):
+            cur[k] = max(cur.get(k, 0), int(s.get(k, 0)))
     for gid, job in state.get("analysis_jobs", {}).items():
         # un job encore "running" ou "queued" à l'arrêt n'a pas pu terminer
         # (thread mort avec le process) : on le marque failed plutôt que de le
@@ -1373,6 +1402,19 @@ def _start_puzzle(puzzle: dict) -> dict:
     return session
 
 
+def _puzzle_hint(puzzle: dict) -> str:
+    """Indice affiché au lancement d'un puzzle (issue #72 : mats en N et
+    combinaisons tactiques, pas seulement mat en 1/2)."""
+    mate_in = puzzle.get("MateIn", 1)
+    theme = puzzle.get("Theme", "")
+    if mate_in == 1:
+        return "Trouvez le coup gagnant (mat en 1)."
+    if mate_in:
+        return (f"Mat en {mate_in} : trouvez le coup clé — l'adversaire "
+                f"répondra automatiquement, puis continuez la combinaison.")
+    return f"Combinaison tactique ({theme}) : trouvez la suite gagnante."
+
+
 def _puzzle_progress(game: dict) -> dict | None:
     """Progression d'un puzzle publié (kind="puzzle") — sans la solution."""
     session = game.get("puzzle")
@@ -1392,55 +1434,96 @@ def _puzzle_progress(game: dict) -> dict | None:
 
 @mcp.tool()
 def next_puzzle() -> dict:
-    """Tire un puzzle : trouvez le mat (en 1 ou 2 coups).
+    """Tire un puzzle : mat (en 1, 2 ou 3 coups) ou combinaison tactique.
 
-    Pour un mat en 2, jouez le coup clé avec try_puzzle_move : la réponse
-    de l'adversaire est jouée automatiquement, puis trouvez le coup de mat.
+    Pour un mat en N (N > 1) ou une combinaison, jouez le coup demandé avec
+    try_puzzle_move : les réponses de l'adversaire sont jouées
+    automatiquement entre vos coups.
     """
     puzzle = random.choice(PUZZLES_LICHESS)
     session = _start_puzzle(puzzle)
     board = session["board"]
-    mate_in = puzzle.get("MateIn", 1)
-    hint = ("Trouvez le coup gagnant (mat en 1)."
-            if mate_in == 1
-            else f"Mat en {mate_in} : trouvez le coup clé, l'adversaire "
-                 "répondra, puis donnez le mat.")
     return {
         "puzzle_id": puzzle["PuzzleId"],
         "theme": puzzle["Theme"],
         "source": _puzzle_source(puzzle["PuzzleId"]),
-        "mate_in": mate_in,
+        "mate_in": puzzle.get("MateIn", 1),
+        "plies": len(puzzle["Moves"].split()),
         "board": _board_str(board),
         "fen": puzzle["FEN"],
         "side_to_play": "white" if board.turn == chess.WHITE else "black",
-        "hint": hint,
+        "hint": _puzzle_hint(puzzle),
     }
 
 
 @mcp.tool()
-def list_puzzles(mate_in: int | None = None) -> dict:
+def list_puzzles(mate_in: int | None = None, theme: str | None = None) -> dict:
     """Liste le catalogue des puzzles disponibles (base locale puzzles.json).
 
     Donne les identifiants à passer à start_puzzle(puzzle_id=...).
 
     Args:
-        mate_in: filtre optionnel — 1 (mat en 1) ou 2 (mat en 2). None = tous.
+        mate_in: filtre optionnel — N ≥ 1 (mat en N coups). None = tous,
+            y compris les combinaisons tactiques (MateIn absent).
+        theme: filtre optionnel par thème (ex. "fork", "pin", "mateIn3",
+            "hangingPiece"… voir les thèmes du catalogue).
     """
     if mate_in is not None:
         mate_in = int(mate_in)
-        if mate_in not in (1, 2):
-            raise ValueError("mate_in doit valoir 1 ou 2 (ou None).")
+        if mate_in < 1:
+            raise ValueError("mate_in doit être un entier >= 1 (ou None).")
+    if theme is not None:
+        theme = theme.strip()
+        if not theme:
+            raise ValueError("theme ne doit pas être vide (ou None).")
     puzzles = [
         {
             "puzzle_id": p["PuzzleId"],
             "theme": p.get("Theme", ""),
             "source": _puzzle_source(p["PuzzleId"]),
             "mate_in": p.get("MateIn", 1),
+            "plies": len(p["Moves"].split()),
         }
         for p in PUZZLES
-        if mate_in is None or p.get("MateIn", 1) == mate_in
+        if (mate_in is None or p.get("MateIn", 1) == mate_in)
+        and (theme is None or p.get("Theme", "") == theme)
     ]
     return {"count": len(puzzles), "puzzles": puzzles}
+
+
+def _puzzle_stats_payload() -> dict:
+    """Scores par thème (issue #72) : compteurs + taux de réussite et de
+    réussite au premier essai. Partagé entre l'outil MCP puzzle_stats et
+    l'endpoint web /web/api/puzzle_stats."""
+    def _with_rate(s: dict) -> dict:
+        out = dict(s)
+        out["success_rate"] = (round(100.0 * s["correct"] / s["attempts"], 1)
+                               if s["attempts"] else 0.0)
+        out["first_try_rate"] = (round(100.0 * s["first_try"] / s["solved"], 1)
+                                 if s["solved"] else 0.0)
+        return out
+
+    by_theme = {t: _with_rate(s) for t, s in sorted(PUZZLE_SCORES.items())}
+    total = {
+        "attempts": sum(s["attempts"] for s in PUZZLE_SCORES.values()),
+        "correct": sum(s["correct"] for s in PUZZLE_SCORES.values()),
+        "solved": sum(s["solved"] for s in PUZZLE_SCORES.values()),
+        "first_try": sum(s["first_try"] for s in PUZZLE_SCORES.values()),
+    }
+    return {"total": _with_rate(total), "by_theme": by_theme}
+
+
+@mcp.tool()
+def puzzle_stats() -> dict:
+    """Scores d'entraînement de l'agent par thème de puzzle (issue #72).
+
+    Pour chaque thème : `attempts` (coups tentés), `correct` (coups validés),
+    `solved` (puzzles résolus), `first_try` (résolus dès le premier coup),
+    `success_rate` (% de coups validés) et `first_try_rate` (% de résolutions
+    au premier essai). Un total agrège tous les thèmes. Sert à cibler
+    l'entraînement sur les familles d'erreurs réelles de l'agent.
+    """
+    return _puzzle_stats_payload()
 
 
 @mcp.tool()
@@ -1477,21 +1560,17 @@ def start_puzzle(puzzle_id: str | None = None,
     # session de puzzle adossée à l'échiquier : les coups validés sont
     # poussés sur game["board"], visible sur le web en temps réel.
     game["puzzle"] = {"puzzle": puzzle, "board": game["board"], "plies_done": 0}
-    mate_in = puzzle.get("MateIn", 1)
-    hint = ("Trouvez le coup gagnant (mat en 1)."
-            if mate_in == 1
-            else f"Mat en {mate_in} : trouvez le coup clé, l'adversaire "
-                 "répondra, puis donnez le mat.")
     return {
         "game_id": game_id,
         "puzzle_id": puzzle["PuzzleId"],
         "theme": puzzle["Theme"],
         "source": _puzzle_source(puzzle["PuzzleId"]),
-        "mate_in": mate_in,
+        "mate_in": puzzle.get("MateIn", 1),
+        "plies": len(puzzle["Moves"].split()),
         "board": _board_str(game["board"]),
         "fen": puzzle["FEN"],
         "side_to_play": "white" if game["board"].turn == chess.WHITE else "black",
-        "hint": hint,
+        "hint": _puzzle_hint(puzzle),
         "note": "Puzzle publié : l'interface web peut l'observer (mode "
                  "Puzzles). Jouez avec try_puzzle_move(..., game_id=...).",
     }
@@ -1573,11 +1652,15 @@ def try_puzzle_move(puzzle_id: str, move: str,
                     game_id: str | None = None) -> dict:
     """Propose une solution pour un puzzle tiré avec next_puzzle/start_puzzle.
 
-    Pour un mat en 2 : le coup clé est validé, la réponse de l'adversaire
-    est jouée automatiquement, puis le coup de mat est demandé.
+    Mat en N ou combinaison tactique (issue #72) : vous jouez les coups de
+    votre camp, les réponses de l'adversaire sont jouées automatiquement
+    entre vos coups ; le puzzle est résolu quand la ligne est complétée (ou
+    par un mat).
 
     Avec game_id (puzzle publié via start_puzzle), chaque coup validé est
     joué sur l'échiquier du serveur : l'interface web suit la résolution.
+
+    Chaque tentative alimente les scores par thème (voir puzzle_stats).
 
     Args:
         puzzle_id: identifiant du puzzle.
@@ -1612,50 +1695,54 @@ def try_puzzle_move(puzzle_id: str, move: str,
         return {"correct": False, "note": f"Coup invalide ou illégal : {move}"}
 
     mate_in = puzzle.get("MateIn", 1)
+    theme = puzzle.get("Theme", "")
     matches_line = parsed.uci() == line[plies_done]
     alternative = (not matches_line
                    and _is_alternative_solution(board, parsed, puzzle, plies_done))
     if (not matches_line) and not alternative:
         # refus explicite : rappeler la réponse adverse déjà jouée pour
         # éviter les essais à l'aveugle (issue #52, mate2_090)
+        _puzzle_scores_bump(theme, correct=False, solved=False, first_ply=False)
+        _persist()
         note = f"{board.san(parsed)} n'est pas la solution. Réessayez."
-        if board.move_stack and mate_in == 2 and plies_done % 2 == 0:
-            note += (f" (rappel : l'adversaire a joué {_last_san(board)} "
-                     "— cherchez le mat.)")
+        if board.move_stack and plies_done > 0 and plies_done % 2 == 0:
+            note += f" (rappel : l'adversaire a joué {_last_san(board)}.)"
+        if mate_in:
+            hint = ("Cherchez un mat en un coup."
+                    if mate_in == 1 or plies_done > 0
+                    else f"Cherchez le coup clé du mat en {mate_in}.")
+        else:
+            hint = "Cherchez la suite gagnante de la combinaison."
         return {
             "correct": False,
             "note": note,
-            "hint": ("Cherchez un mat en un coup."
-                     if mate_in == 1 or plies_done > 0
-                     else "Cherchez le coup clé du mat en 2."),
+            "hint": hint,
         }
 
+    return _apply_puzzle_move(puzzle, session, parsed, alternative)
+
+
+def _apply_puzzle_move(puzzle: dict, session: dict, parsed: chess.Move,
+                       alternative: bool) -> dict:
+    """Joue le coup validé du joueur sur la session, ajoute la réponse
+    automatique de l'adversaire (plies impairs) et conclut si la ligne est
+    terminée. Issue #72 : la ligne des puzzles lichess est de longueur paire —
+    la réponse automatique de l'adversaire peut conclure (y compris par mat).
+    Met à jour les scores du thème et persiste."""
+    board = session["board"]
+    line = puzzle["Moves"].split()
+    theme = puzzle.get("Theme", "")
+    mate_in = puzzle.get("MateIn", 1)
+    plies_done = session["plies_done"]
+    first_ply = (plies_done == 0)
     san = board.san(parsed)
     board.push(parsed)
-    if board.is_checkmate() or plies_done + 1 >= len(line):
-        # mat effectif (ligne du catalogue ou variante matante)
-        session["plies_done"] = plies_done + 1
-        session["solved"] = True
-        _persist()
-        if board.is_checkmate():
-            return {
-                "correct": True,
-                "solved": True,
-                "note": f"Bravo ! {san} — mat en {mate_in} trouvé "
-                        f"({puzzle['Theme']})"
-                        + (" (variante acceptée)" if alternative else "") + ".",
-            }
-        # fin de ligne du catalogue sans mat réel (puzzle généré dégénéré)
-        return {
-            "correct": True,
-            "solved": True,
-            "note": f"{san} — ligne du puzzle complétée ({puzzle['Theme']}).",
-        }
-
     plies_done += 1
-
-    # réponse de l'adversaire : jouée automatiquement
-    if plies_done < len(line) and plies_done % 2 == 1:
+    # résolu si mat effectif (ligne ou variante matante) ou fin de ligne
+    solved_now = board.is_checkmate() or plies_done >= len(line)
+    reply_san = None
+    if not solved_now and plies_done % 2 == 1:
+        # réponse de l'adversaire : jouée automatiquement (plies impairs)
         reply = chess.Move.from_uci(line[plies_done])
         if reply not in board.legal_moves:
             # coup clé alternatif : la réponse du catalogue peut être illégale
@@ -1665,24 +1752,31 @@ def try_puzzle_move(puzzle_id: str, move: str,
         reply_san = board.san(reply)
         board.push(reply)
         plies_done += 1
-        session["plies_done"] = plies_done
-        _persist()
-        return {
-            "correct": True,
-            "note": f"{san} ! L'adversaire répond {reply_san}. Trouvez le mat.",
-            "board": _board_str(board),
-            "fen": board.fen(),
-            "mate_in": puzzle.get("MateIn", 1),
-        }
-
+        if plies_done >= len(line):
+            solved_now = True
     session["plies_done"] = plies_done
-    session["solved"] = True
-    mate_in = puzzle.get("MateIn", 1)
+    if solved_now:
+        session["solved"] = True
+    _puzzle_scores_bump(theme, correct=True, solved=solved_now,
+                        first_ply=(first_ply and solved_now))
     _persist()
+    if solved_now:
+        if board.is_checkmate():
+            mat_label = f"mat en {mate_in}" if mate_in else "mat"
+            note = (f"Bravo ! {san} — {mat_label} trouvé ({theme})"
+                    + (" (variante acceptée)" if alternative else "") + ".")
+        else:
+            note = f"Bravo ! {san} — combinaison réussie ({theme})."
+        return {"correct": True, "solved": True, "note": note}
+    suite = "Trouvez le mat." if mate_in else "Continuez la combinaison."
+    note = (f"{san} ! L'adversaire répond {reply_san}. {suite}"
+            if reply_san else f"{san} ! {suite}")
     return {
         "correct": True,
-        "solved": True,
-        "note": f"Bravo ! {san} — mat en {mate_in} trouvé ({puzzle['Theme']}).",
+        "note": note,
+        "board": _board_str(board),
+        "fen": board.fen(),
+        "mate_in": mate_in,
     }
 
 
@@ -2232,6 +2326,15 @@ async def web_version(request: Request) -> JSONResponse:
     if not _web_authorized(request):
         return JSONResponse({"error": "non autorisé"}, status_code=401)
     return JSONResponse({"version": __version__, "commit": _git_commit()})
+
+
+@mcp.custom_route("/web/api/puzzle_stats", methods=["GET"])
+async def web_puzzle_stats(request: Request) -> JSONResponse:
+    """Scores d'entraînement par thème de puzzle (issue #72), affichés dans
+    le mode Puzzles de l'UI web."""
+    if not _web_authorized(request):
+        return JSONResponse({"error": "non autorisé"}, status_code=401)
+    return JSONResponse(_puzzle_stats_payload())
 
 
 @mcp.custom_route("/web/api/games", methods=["GET"])
