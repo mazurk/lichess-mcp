@@ -278,6 +278,40 @@ def test_puzzle_scores_and_stats():
     assert stats["by_theme"][theme]["first_try_rate"] == 0.0
 
 
+def test_puzzle_stats_theme_filter_failed_last(monkeypatch, tmp_path):
+    """Issue #82 : puzzle_stats(theme=...) filtre la vue, expose `failed` et
+    `last_puzzle_id` ; persistance du last_puzzle_id au redémarrage."""
+    monkeypatch.setenv("LICHESS_MCP_STATE_FILE", str(tmp_path / "state.json"))
+    mate2 = next(p for p in server.PUZZLES if p.get("MateIn") == 2)
+    server._start_puzzle(mate2)
+    pid = mate2["PuzzleId"]
+    line = mate2["Moves"].split()
+    theme = mate2["Theme"]
+    board = chess.Board(mate2["FEN"])
+    wrong = next(m.uci() for m in board.legal_moves if m.uci() != line[0])
+    server.try_puzzle_move(pid, wrong)          # raté
+    _play_line(pid, line)                        # résolu en 2 coups corrects
+
+    s = server.puzzle_stats(theme=theme)
+    assert s["theme"] == theme
+    assert list(s["by_theme"]) == [theme]
+    t = s["by_theme"][theme]
+    assert t["attempts"] == 3 and t["correct"] == 2 and t["failed"] == 1
+    assert t["solved"] == 1 and t["last_puzzle_id"] == pid
+    assert s["total"]["failed"] == 1
+    # thème inconnu -> vue vide mais structure valide
+    s2 = server.puzzle_stats(theme="theme_inexistant")
+    assert s2["by_theme"] == {} and s2["total"]["attempts"] == 0
+    # thème vide -> erreur
+    with pytest.raises(ValueError):
+        server.puzzle_stats(theme="   ")
+    # persistance : last_puzzle_id rechargé depuis le disque
+    server.PUZZLE_SCORES.clear()
+    server._load_state()
+    assert server.PUZZLE_SCORES[theme]["last_puzzle_id"] == pid
+    assert server.PUZZLE_SCORES[theme]["solved"] == 1
+
+
 def test_puzzle_scores_first_try():
     """Issue #72 : un puzzle résolu dès le premier coup compte en first_try."""
     mate1 = next(p for p in server.PUZZLES if p.get("MateIn", 1) == 1)
