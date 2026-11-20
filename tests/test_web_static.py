@@ -120,9 +120,12 @@ def test_seat_labels_plain_name_and_libre():
 
 def test_eval_gauge_text_small_and_contrast():
     """Issue #89 retours visuels : texte de la jauge assez petit pour tenir
-    dans la barre, et placé/coloré en couleur inverse de sa portion."""
+    dans la barre, TOUJOURS en haut (retour 5), et coloré en inverse de la
+    portion du haut pour le contraste."""
     assert "font-size: 9px" in HTML  # .evalgauge-text réduit
     assert "gaugeTextPlacement" in APP_JS and "gaugeTextPlacement" in UTIL
+    assert 'text.style.top = "3px"' in APP_JS  # toujours en haut de la barre
+    assert 'text.style.bottom = "auto"' in APP_JS
 
 
 def test_analysis_view_color_applies_immediately():
