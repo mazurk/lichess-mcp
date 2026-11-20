@@ -61,6 +61,23 @@ function evalWhiteToText(evalWhite) {
   return (v > 0 ? "+" : "") + v.toFixed(1);
 }
 
+function evalToGaugePct(evalWhite) {
+  // Centipions (perspective blancs) -> pourcentage de hauteur « blancs » (0..100)
+  // pour la jauge verticale façon lichess (issue #89) : sigmoïde, 50 à
+  // l'égalité, ~100 % mat blanc, ~0 % mat noir. null si eval indisponible.
+  if (typeof evalWhite !== "number" || !isFinite(evalWhite)) return null;
+  const cp = Math.max(-100000, Math.min(100000, evalWhite));
+  return 50 * (1 + Math.tanh(cp / 400));
+}
+
+function seatDisplayName(name, color) {
+  // Nom affiché pour un camp (issue #89) : « Libre » si le camp n'a pas de
+  // joueur (nom vide ou nom par défaut « Blancs »/« Noirs »).
+  const def = color === "white" ? "Blancs" : "Noirs";
+  return (name && String(name) !== def) ? String(name) : "Libre";
+}
+
 if (typeof module !== "undefined") {
-  module.exports = { isStaleResponse, pieceGlyph, escapeHtml, fenToGrid, evalWhiteToText };
+  module.exports = { isStaleResponse, pieceGlyph, escapeHtml, fenToGrid,
+                     evalWhiteToText, evalToGaugePct, seatDisplayName };
 }

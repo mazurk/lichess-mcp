@@ -82,6 +82,17 @@
   #moves .timev { color: #8a8a8a; font-size: 11px; margin-left: 2px; }
   #moves .mv.cur .evalv { color: #d7e2b0; }
   .board-wrap { display: flex; flex-direction: column; gap: 6px; }
+  .board-row { display: flex; gap: 6px; align-items: stretch; }
+  .board-col { display: flex; flex-direction: column; gap: 6px; }
+  /* Jauge d'évaluation verticale façon lichess, à droite de l'échiquier (issue #89) */
+  .evalgauge { position: relative; width: 20px; border-radius: 4px; overflow: hidden;
+               border: 1px solid #4d4b47; background: #1b1a18; }
+  .evalgauge-fill { position: absolute; top: 0; left: 0; right: 0; height: 50%;
+                    transition: height 0.15s; }
+  .evalgauge-text { position: absolute; top: 3px; left: 0; right: 0; text-align: center;
+                    font-size: 10px; font-weight: 700; pointer-events: none; }
+  .seat-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%;
+              border: 1px solid #777; margin-right: 5px; vertical-align: -1px; }
   .board-label { font-size: 14px; color: #ddd; padding: 0 2px; display: flex; justify-content: space-between; }
   .board-label .seat { color: #8a8a8a; font-size: 12px; }
   .board-label .turn-ind { color: var(--accent); font-weight: 700; }
@@ -104,9 +115,17 @@
 <div id="versionBadge" title="Version du serveur déployé">v…</div>
 <div class="app">
   <div class="board-wrap">
-    <div class="board-label" id="labelTop"></div>
-    <div class="board" id="board"></div>
-    <div class="board-label" id="labelBottom"></div>
+    <div class="board-row">
+      <div class="board-col">
+        <div class="board-label" id="labelTop"></div>
+        <div class="board" id="board"></div>
+        <div class="board-label" id="labelBottom"></div>
+      </div>
+      <div id="evalgauge" class="evalgauge" style="display:none;" title="Évaluation Stockfish de la position affichée">
+        <div id="evalgauge-fill" class="evalgauge-fill"></div>
+        <div id="evalgauge-text" class="evalgauge-text"></div>
+      </div>
+    </div>
     <div id="cheatAlert" style="display:none; color:#fff; background:var(--blunder); font-weight:700; font-size:13px; padding:3px 10px; border-radius:6px;"></div>
     <p id="status"></p>
     <p id="result"></p>

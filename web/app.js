@@ -16,7 +16,7 @@ const MODE_HINTS = {
 };
 const MODE_LABELS = {
   join: "Rejoindre",
-  analysis: "Analyser",
+  analysis: "Consulter",  // le bouton ouvre une analyse déjà produite (issue #89)
   dryrun: "Consulter",
   puzzle: "Consulter",
 };
@@ -142,7 +142,8 @@ function afterState() {
   render();
   setResult(state.result || "");
   playersEl.innerHTML = state.white_name === undefined ? "" :
-    "Blancs : <b>" + escapeHtml(state.white_name) + "</b><br>Noirs : <b>" + escapeHtml(state.black_name) + "</b>";
+    "Blancs : <b>" + escapeHtml(seatDisplayName(state.white_name, "white")) + "</b><br>Noirs : <b>"
+    + escapeHtml(seatDisplayName(state.black_name, "black")) + "</b>";
   // Bouton d'abandon : visible uniquement pour un joueur (pas un spectateur),
   // tant que la partie est en cours.
   const btnResign = document.getElementById("btnResign");
@@ -255,8 +256,40 @@ function render() {
   }
   renderMoves();
   renderEvalChart();
+  renderEvalGauge();
   renderBoardLabels();
   renderGameStatus();
+}
+
+function renderEvalGauge() {
+  // Jauge d'évaluation verticale façon lichess, à droite de l'échiquier
+  // (issue #89) : proportionnelle à l'eval Stockfish de la position affichée,
+  // mise à jour au fil de la navigation coup par coup. Masquée sans analyse ;
+  // neutre (50 %) si la position affichée n'a pas d'eval (position initiale).
+  const gauge = document.getElementById("evalgauge");
+  if (!gauge) return;
+  const fill = document.getElementById("evalgauge-fill");
+  const text = document.getElementById("evalgauge-text");
+  if (!state) { gauge.style.display = "none"; return; }
+  const analysis = state.analysis;
+  if (!analysis || !analysis.evals || !analysis.evals.length) {
+    gauge.style.display = "none";
+    return;
+  }
+  // k = nombre de coups joués dans la position affichée (live = tous les coups)
+  const k = (viewPly === null || isLive()) ? state.moves.length : viewPly;
+  const evalCp = (k >= 1 && k <= analysis.evals.length) ? analysis.evals[k - 1].eval_white : null;
+  const pct = evalToGaugePct(evalCp === null ? 0 : evalCp);
+  if (pct === null) { gauge.style.display = "none"; return; }
+  gauge.style.display = "block";
+  // orientation : le camp du haut est celui de la perspective d'affichage
+  const myWhite = state.your_color !== "black";
+  const topPct = myWhite ? pct : 100 - pct;
+  fill.style.height = topPct.toFixed(1) + "%";
+  fill.style.background = myWhite ? "#f5f5f5" : "#1b1a18";
+  gauge.style.background = myWhite ? "#1b1a18" : "#f5f5f5";
+  text.textContent = evalWhiteToText(evalCp === null ? 0 : evalCp);
+  text.style.color = topPct > 55 ? "#262421" : "#e8e8e8";
 }
 
 function moveInfo(i) {
@@ -487,8 +520,8 @@ function renderBoardLabels() {
   const myWhite = state.your_color !== "black";
   const topColor = myWhite ? "black" : "white";
   const bottomColor = myWhite ? "white" : "black";
-  // Libellé compact et unique par camp : « Blancs — libre » ou « Blancs — Alice ».
-  // Priorité d'affichage : occupant > moteur > nom > libre.
+  // Libellé par camp (issue #89) : repère léger de la couleur + nom du joueur
+  // seul (« Libre » si le camp est vide). Priorité : occupant > moteur > nom.
   const label = (color) => {
     const name = color === "white" ? state.white_name : state.black_name;
     const seat = color === "white" ? state.white_seat : state.black_seat;
@@ -497,15 +530,14 @@ function renderBoardLabels() {
       who = escapeHtml(seat);
     } else if (state.engine_color === color) {
       who = "Moteur";
-    } else if (name && name !== (color === "white" ? "Blancs" : "Noirs")) {
-      who = escapeHtml(name);
     } else {
-      who = "libre";
+      who = escapeHtml(seatDisplayName(name, color));
     }
+    const dot = '<span class="seat-dot" style="background:'
+      + (color === "white" ? "#f5f5f5" : "#1b1a18") + '"></span>';
     const isTurn = state.turn === color && !state.over;
     const turnMark = isTurn ? ' <span class="turn-ind" title="camp au trait">●</span>' : "";
-    return '<span class="' + (isTurn ? "to-move" : "") + '">'
-      + (color === "white" ? "Blancs" : "Noirs") + " — " + who + turnMark + "</span>";
+    return '<span class="' + (isTurn ? "to-move" : "") + '">' + dot + who + turnMark + "</span>";
   };
   top.innerHTML = label(topColor)
     + '<span class="clock" id="clock-' + topColor + '"></span>';
@@ -582,6 +614,10 @@ async function resignGame() {
 
 document.getElementById("btnNew").onclick = () => newGame().then(refreshGameList).catch(e => setStatus(e.message, "err"));
 document.getElementById("btnJoin").onclick = joinGame;
+// Sélection directe dans la liste = ouverture immédiate de la partie (issue #89)
+document.getElementById("gameId").onchange = () => {
+  if (document.getElementById("gameId").value) joinGame();
+};
 document.getElementById("btnResign").onclick = resignGame;
 document.getElementById("btnFirst").onclick = navFirst;
 document.getElementById("btnPrev").onclick = navPrev;
