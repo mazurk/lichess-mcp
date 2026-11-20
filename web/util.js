@@ -78,16 +78,17 @@ function seatDisplayName(name, color) {
 }
 
 function gaugeTextPlacement(topPct, myWhite) {
-  // Issue #89 (retour visuel) : le texte de la jauge est placé dans la portion
-  // majoritaire de la barre et coloré dans la COULEUR INVERSE de cette portion
-  // (noir sur blanc, blanc sur noir) — toujours lisible quel que soit le fond.
-  // Le fill (haut de la barre) = camp de la perspective : blanc si myWhite.
-  const inTop = topPct >= 50;
+  // Issue #89 (retour 5) : le texte de la jauge est TOUJOURS en haut de la
+  // barre, quelle que soit la position de la frontière blanc/noir. Sa couleur
+  // est l'inverse de la portion du haut (fill si frontière sous la moitié,
+  // fond sinon) — contraste garanti. Le fill (haut) = camp de la perspective :
+  // blanc si myWhite.
   const fillIsWhite = myWhite;
-  const color = inTop
-    ? (fillIsWhite ? "#262421" : "#f5f5f5")   // texte sur le fill du haut
-    : (fillIsWhite ? "#f5f5f5" : "#262421");  // texte sur le fond du bas
-  return { inTop, color };
+  const topIsFill = topPct >= 50;
+  const color = topIsFill
+    ? (fillIsWhite ? "#262421" : "#f5f5f5")
+    : (fillIsWhite ? "#f5f5f5" : "#262421");
+  return { inTop: true, color };
 }
 
 if (typeof module !== "undefined") {

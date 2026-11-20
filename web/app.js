@@ -289,11 +289,11 @@ function renderEvalGauge() {
   fill.style.background = myWhite ? "#f5f5f5" : "#1b1a18";
   gauge.style.background = myWhite ? "#1b1a18" : "#f5f5f5";
   text.textContent = evalWhiteToText(evalCp === null ? 0 : evalCp);
-  // issue #89 (retour visuel) : texte dans la portion majoritaire, couleur
-  // inverse de cette portion — toujours lisible quel que soit le fond.
+  // issue #89 (retour 5) : texte TOUJOURS en haut de la barre ; couleur =
+  // inverse de la portion du haut — toujours lisible quel que soit le fond.
   const place = gaugeTextPlacement(topPct, myWhite);
-  text.style.top = place.inTop ? "3px" : "auto";
-  text.style.bottom = place.inTop ? "auto" : "3px";
+  text.style.top = "3px";
+  text.style.bottom = "auto";
   text.style.color = place.color;
 }
 

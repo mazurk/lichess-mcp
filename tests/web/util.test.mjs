@@ -127,15 +127,15 @@ test("seatDisplayName : nom valide conservé, sinon « Libre » (issue #89)", ()
   assert.equal(seatDisplayName(undefined, "black"), "Libre");
 });
 
-test("gaugeTextPlacement : texte dans la portion majoritaire, couleur inverse (issue #89)", () => {
-  // barre majoritairement blanche en haut (vue blancs) -> texte en haut, noir
+test("gaugeTextPlacement : texte TOUJOURS en haut, couleur inverse de la portion du haut (issue #89 retour 5)", () => {
+  // frontière sous la moitié, vue blancs (haut = fill blanc) -> texte noir
   assert.deepEqual(gaugeTextPlacement(80, true), { inTop: true, color: "#262421" });
-  // barre majoritairement noire en haut (vue noirs) -> texte en haut, blanc
+  // frontière sous la moitié, vue noirs (haut = fill noir) -> texte blanc
   assert.deepEqual(gaugeTextPlacement(80, false), { inTop: true, color: "#f5f5f5" });
-  // barre majoritairement au fond (vue blancs : fond noir) -> texte en bas, blanc
-  assert.deepEqual(gaugeTextPlacement(20, true), { inTop: false, color: "#f5f5f5" });
-  // idem vue noirs (fond blanc) -> texte en bas, noir
-  assert.deepEqual(gaugeTextPlacement(20, false), { inTop: false, color: "#262421" });
-  // égalité -> en haut
-  assert.equal(gaugeTextPlacement(50, true).inTop, true);
+  // frontière au-dessus de la moitié, vue blancs (haut = fond noir) -> texte blanc
+  assert.deepEqual(gaugeTextPlacement(20, true), { inTop: true, color: "#f5f5f5" });
+  // idem vue noirs (haut = fond blanc) -> texte noir
+  assert.deepEqual(gaugeTextPlacement(20, false), { inTop: true, color: "#262421" });
+  // égalité -> en haut, couleur du fill
+  assert.deepEqual(gaugeTextPlacement(50, true), { inTop: true, color: "#262421" });
 });
