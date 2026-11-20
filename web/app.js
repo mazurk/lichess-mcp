@@ -282,19 +282,20 @@ function renderEvalGauge() {
   const pct = evalToGaugePct(evalCp === null ? 0 : evalCp);
   if (pct === null) { gauge.style.display = "none"; return; }
   gauge.style.display = "block";
-  // orientation : le camp du haut est celui de la perspective d'affichage
+  // issue #89 (retour 6) : la barre s'oriente comme l'échiquier — le camp de
+  // la perspective d'affichage est EN BAS (blancs en bas en vue blancs).
   const myWhite = state.your_color !== "black";
-  const topPct = myWhite ? pct : 100 - pct;
-  fill.style.height = topPct.toFixed(1) + "%";
+  const bottomPct = myWhite ? pct : 100 - pct;
+  fill.style.height = bottomPct.toFixed(1) + "%";
   fill.style.background = myWhite ? "#f5f5f5" : "#1b1a18";
   gauge.style.background = myWhite ? "#1b1a18" : "#f5f5f5";
-  text.textContent = evalWhiteToText(evalCp === null ? 0 : evalCp);
-  // issue #89 (retour 5) : texte TOUJOURS en haut de la barre ; couleur =
-  // inverse de la portion du haut — toujours lisible quel que soit le fond.
-  const place = gaugeTextPlacement(topPct, myWhite);
-  text.style.top = "3px";
-  text.style.bottom = "auto";
-  text.style.color = place.color;
+  // issue #89 (retour 7) : texte du CÔTÉ de la couleur favorisée, sans signe,
+  // noir sur blanc / blanc sur noir — toujours lisible.
+  const ts = gaugeTextStyle(evalCp, myWhite);
+  text.textContent = ts.text;
+  text.style.top = ts.pos === "top" ? "3px" : "auto";
+  text.style.bottom = ts.pos === "bottom" ? "3px" : "auto";
+  text.style.color = ts.color;
 }
 
 function moveInfo(i) {

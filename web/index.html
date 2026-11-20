@@ -87,7 +87,8 @@
   /* Jauge d'évaluation verticale façon lichess, à droite de l'échiquier (issue #89) */
   .evalgauge { position: relative; width: 22px; border-radius: 4px; overflow: hidden;
                border: 1px solid #4d4b47; background: #1b1a18; }
-  .evalgauge-fill { position: absolute; top: 0; left: 0; right: 0; height: 50%;
+  /* le fill (camp de la perspective) est ancré EN BAS, comme l'échiquier (issue #89 retour 6) */
+  .evalgauge-fill { position: absolute; bottom: 0; left: 0; right: 0; height: 50%;
                     transition: height 0.15s; }
   /* texte contenu dans la barre (issue #89 retour : taille réduite) */
   .evalgauge-text { position: absolute; top: 3px; left: 0; right: 0; text-align: center;

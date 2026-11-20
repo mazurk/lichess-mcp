@@ -55,7 +55,7 @@ def _build_auth() -> TokenVerifier | None:
 # (badge #versionBadge) pour valider rapidement la version déployée.
 # Le commit court est injecté au build Docker (ARG GIT_COMMIT, voir Dockerfile
 # et docs/DEPLOIEMENT.md §6) et exposé via /web/api/version.
-__version__ = "0.14"
+__version__ = "0.15"
 
 
 def _git_commit() -> str | None:

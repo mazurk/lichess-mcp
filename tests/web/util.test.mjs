@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { isStaleResponse, pieceGlyph, escapeHtml, fenToGrid, evalWhiteToText,
-         evalToGaugePct, seatDisplayName, gaugeTextPlacement } from "../../web/util.js";
+         evalToGaugePct, seatDisplayName, gaugeTextStyle } from "../../web/util.js";
 
 const state = (gameId, moves) => ({ game_id: gameId, moves });
 
@@ -127,15 +127,19 @@ test("seatDisplayName : nom valide conservé, sinon « Libre » (issue #89)", ()
   assert.equal(seatDisplayName(undefined, "black"), "Libre");
 });
 
-test("gaugeTextPlacement : texte TOUJOURS en haut, couleur inverse de la portion du haut (issue #89 retour 5)", () => {
-  // frontière sous la moitié, vue blancs (haut = fill blanc) -> texte noir
-  assert.deepEqual(gaugeTextPlacement(80, true), { inTop: true, color: "#262421" });
-  // frontière sous la moitié, vue noirs (haut = fill noir) -> texte blanc
-  assert.deepEqual(gaugeTextPlacement(80, false), { inTop: true, color: "#f5f5f5" });
-  // frontière au-dessus de la moitié, vue blancs (haut = fond noir) -> texte blanc
-  assert.deepEqual(gaugeTextPlacement(20, true), { inTop: true, color: "#f5f5f5" });
-  // idem vue noirs (haut = fond blanc) -> texte noir
-  assert.deepEqual(gaugeTextPlacement(20, false), { inTop: true, color: "#262421" });
-  // égalité -> en haut, couleur du fill
-  assert.deepEqual(gaugeTextPlacement(50, true), { inTop: true, color: "#262421" });
+test("gaugeTextStyle : texte du côté de la couleur favorisée, sans signe (issue #89 retours 6-7)", () => {
+  // éval +1.5, vue des blancs -> « 1.5 » en noir, en bas (côté blanc = bas en vue blancs)
+  assert.deepEqual(gaugeTextStyle(150, true), { pos: "bottom", color: "#262421", text: "1.5" });
+  // éval -0.8, vue des blancs -> « 0.8 » en blanc, en haut (côté noir = haut en vue blancs)
+  assert.deepEqual(gaugeTextStyle(-80, true), { pos: "top", color: "#f5f5f5", text: "0.8" });
+  // éval +1.5, vue des noirs -> « 1.5 » en noir, en haut (côté blanc = haut en vue noirs)
+  assert.deepEqual(gaugeTextStyle(150, false), { pos: "top", color: "#262421", text: "1.5" });
+  // éval -0.8, vue des noirs -> « 0.8 » en blanc, en bas (côté noir = bas en vue noirs)
+  assert.deepEqual(gaugeTextStyle(-80, false), { pos: "bottom", color: "#f5f5f5", text: "0.8" });
+  // mat : « M3 » sans signe
+  assert.equal(gaugeTextStyle(99700, true).text, "M3");
+  assert.equal(gaugeTextStyle(-99700, true).text, "M3");
+  // égalité / eval indisponible -> côté blanc, « 0.0 »
+  assert.deepEqual(gaugeTextStyle(0, true), { pos: "bottom", color: "#262421", text: "0.0" });
+  assert.deepEqual(gaugeTextStyle(null, false), { pos: "top", color: "#262421", text: "0.0" });
 });
