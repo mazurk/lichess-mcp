@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { isStaleResponse, pieceGlyph, escapeHtml, fenToGrid, evalWhiteToText,
-         evalToGaugePct, seatDisplayName } from "../../web/util.js";
+         evalToGaugePct, seatDisplayName, gaugeTextPlacement } from "../../web/util.js";
 
 const state = (gameId, moves) => ({ game_id: gameId, moves });
 
@@ -125,4 +125,17 @@ test("seatDisplayName : nom valide conservé, sinon « Libre » (issue #89)", ()
   assert.equal(seatDisplayName("Noirs", "black"), "Libre");
   assert.equal(seatDisplayName("", "white"), "Libre");
   assert.equal(seatDisplayName(undefined, "black"), "Libre");
+});
+
+test("gaugeTextPlacement : texte dans la portion majoritaire, couleur inverse (issue #89)", () => {
+  // barre majoritairement blanche en haut (vue blancs) -> texte en haut, noir
+  assert.deepEqual(gaugeTextPlacement(80, true), { inTop: true, color: "#262421" });
+  // barre majoritairement noire en haut (vue noirs) -> texte en haut, blanc
+  assert.deepEqual(gaugeTextPlacement(80, false), { inTop: true, color: "#f5f5f5" });
+  // barre majoritairement au fond (vue blancs : fond noir) -> texte en bas, blanc
+  assert.deepEqual(gaugeTextPlacement(20, true), { inTop: false, color: "#f5f5f5" });
+  // idem vue noirs (fond blanc) -> texte en bas, noir
+  assert.deepEqual(gaugeTextPlacement(20, false), { inTop: false, color: "#262421" });
+  // égalité -> en haut
+  assert.equal(gaugeTextPlacement(50, true).inTop, true);
 });

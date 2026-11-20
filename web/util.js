@@ -77,7 +77,21 @@ function seatDisplayName(name, color) {
   return (name && String(name) !== def) ? String(name) : "Libre";
 }
 
+function gaugeTextPlacement(topPct, myWhite) {
+  // Issue #89 (retour visuel) : le texte de la jauge est placé dans la portion
+  // majoritaire de la barre et coloré dans la COULEUR INVERSE de cette portion
+  // (noir sur blanc, blanc sur noir) — toujours lisible quel que soit le fond.
+  // Le fill (haut de la barre) = camp de la perspective : blanc si myWhite.
+  const inTop = topPct >= 50;
+  const fillIsWhite = myWhite;
+  const color = inTop
+    ? (fillIsWhite ? "#262421" : "#f5f5f5")   // texte sur le fill du haut
+    : (fillIsWhite ? "#f5f5f5" : "#262421");  // texte sur le fond du bas
+  return { inTop, color };
+}
+
 if (typeof module !== "undefined") {
   module.exports = { isStaleResponse, pieceGlyph, escapeHtml, fenToGrid,
-                     evalWhiteToText, evalToGaugePct, seatDisplayName };
+                     evalWhiteToText, evalToGaugePct, seatDisplayName,
+                     gaugeTextPlacement };
 }
