@@ -14,7 +14,7 @@ PAGE_FUNCTIONS = [
     "setStatus", "setResult", "afterState", "render", "renderBoardLabels",
     "renderEvalGauge", "startPolling", "stopPolling", "refresh", "newGame",
     "joinGame", "playMove", "onSquare", "sideName", "pieceGlyph",
-    "isStaleResponse", "escapeHtml", "api",
+    "isStaleResponse", "escapeHtml", "api", "gaugeTextPlacement",
 ]
 
 
@@ -116,3 +116,23 @@ def test_seat_labels_plain_name_and_libre():
     # l'ancien préfixe « Blancs — <nom> » des libellés de camp est supprimé
     assert '"Blancs" : "Noirs") + " — "' not in APP_JS
     assert '(color === "white" ? "Blancs" : "Noirs") + " — "' not in APP_JS
+
+
+def test_eval_gauge_text_small_and_contrast():
+    """Issue #89 retours visuels : texte de la jauge assez petit pour tenir
+    dans la barre, et placé/coloré en couleur inverse de sa portion."""
+    assert "font-size: 9px" in HTML  # .evalgauge-text réduit
+    assert "gaugeTextPlacement" in APP_JS and "gaugeTextPlacement" in UTIL
+
+
+def test_analysis_view_color_applies_immediately():
+    """Issue #89 retour : en mode Analyse, changer la perspective ré-ouvre la
+    partie immédiatement (sans clic sur « Consulter »)."""
+    assert 'getElementById("viewColor").onchange' in APP_JS
+
+
+def test_game_list_refreshes_periodically():
+    """Issue #89 retour : la liste des parties est rafraîchie périodiquement
+    (~0,5 Hz = toutes les 2 s) ; le bouton ↻ manuel reste en complément."""
+    assert "setInterval" in APP_JS and "refreshGameList" in APP_JS
+    assert "2000" in APP_JS

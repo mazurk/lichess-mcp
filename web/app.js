@@ -289,7 +289,12 @@ function renderEvalGauge() {
   fill.style.background = myWhite ? "#f5f5f5" : "#1b1a18";
   gauge.style.background = myWhite ? "#1b1a18" : "#f5f5f5";
   text.textContent = evalWhiteToText(evalCp === null ? 0 : evalCp);
-  text.style.color = topPct > 55 ? "#262421" : "#e8e8e8";
+  // issue #89 (retour visuel) : texte dans la portion majoritaire, couleur
+  // inverse de cette portion — toujours lisible quel que soit le fond.
+  const place = gaugeTextPlacement(topPct, myWhite);
+  text.style.top = place.inTop ? "3px" : "auto";
+  text.style.bottom = place.inTop ? "auto" : "3px";
+  text.style.color = place.color;
 }
 
 function moveInfo(i) {
@@ -618,6 +623,17 @@ document.getElementById("btnJoin").onclick = joinGame;
 document.getElementById("gameId").onchange = () => {
   if (document.getElementById("gameId").value) joinGame();
 };
+// Issue #89 (retour visuel) : en mode Analyse, changer la perspective
+// d'affichage ré-ouvre immédiatement la partie ouvert avec cette vue
+// (le bouton « Consulter » ne sert qu'au premier affichage).
+document.getElementById("viewColor").onchange = () => {
+  if (mode === "analysis" && document.getElementById("gameId").value) joinGame();
+};
+// Issue #89 (retour visuel) : la liste des parties est rafraîchie
+// périodiquement (~0,5 Hz = toutes les 2 s) ; le bouton ↻ reste en complément.
+setInterval(() => {
+  if (mode !== "create") refreshGameList().catch(() => {});
+}, 2000);
 document.getElementById("btnResign").onclick = resignGame;
 document.getElementById("btnFirst").onclick = navFirst;
 document.getElementById("btnPrev").onclick = navPrev;

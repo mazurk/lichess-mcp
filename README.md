@@ -137,9 +137,11 @@ la liste** (bouton « Rejoindre ») ou en la regardant en **mode spectateur** �
 de consulter les parties analysées (mode **Analyse**, bouton « Consulter »), les
 échiquiers d'analyse dry-run (mode **Dry-run**) et les puzzles publiés (mode
 **Puzzles**), de jouer à la souris (coups légaux surlignés, promotion gérée),
-de suivre les coups en temps réel (rafraîchissement automatique) et de naviguer
+de suivre les coups en temps réel (rafraîchissement automatique, liste des
+parties rafraîchie toutes les 2 s) et de naviguer
 dans l'historique coup par coup — y compris jusqu'à la **position initiale**
-(avant le 1er coup). Les camps sont libellés simplement sous l'échiquier
+(avant le 1er coup). En mode **Analyse**, changer la perspective d'affichage
+s'applique immédiatement. Les camps sont libellés simplement sous l'échiquier
 (repère de couleur + nom du joueur, « Libre » si le camp est vide). Un bouton
 **Abandonner la partie** est proposé aux joueurs (jamais aux spectateurs), et
 toute fin de partie (abandon, mat, drapeau) **nomme le vainqueur**. Si un
