@@ -77,22 +77,21 @@ function seatDisplayName(name, color) {
   return (name && String(name) !== def) ? String(name) : "Libre";
 }
 
-function gaugeTextPlacement(topPct, myWhite) {
-  // Issue #89 (retour 5) : le texte de la jauge est TOUJOURS en haut de la
-  // barre, quelle que soit la position de la frontière blanc/noir. Sa couleur
-  // est l'inverse de la portion du haut (fill si frontière sous la moitié,
-  // fond sinon) — contraste garanti. Le fill (haut) = camp de la perspective :
-  // blanc si myWhite.
-  const fillIsWhite = myWhite;
-  const topIsFill = topPct >= 50;
-  const color = topIsFill
-    ? (fillIsWhite ? "#262421" : "#f5f5f5")
-    : (fillIsWhite ? "#f5f5f5" : "#262421");
-  return { inTop: true, color };
+function gaugeTextStyle(evalCp, myWhite) {
+  // Issue #89 (retours 6-7) : le texte de la jauge s'affiche DU CÔTÉ de la
+  // couleur favorisée, sans signe : noir côté blanc, blanc côté noir.
+  // « Côté blanc » = en bas en vue des blancs, en haut en vue des noirs
+  // (la barre s'oriente comme l'échiquier : camp de la perspective en bas).
+  const whiteFavored = (evalCp === null || evalCp >= 0);
+  const whiteSide = myWhite ? "bottom" : "top";
+  const pos = whiteFavored ? whiteSide : (whiteSide === "top" ? "bottom" : "top");
+  const color = whiteFavored ? "#262421" : "#f5f5f5";
+  const text = evalWhiteToText(evalCp === null ? 0 : evalCp).replace(/^[+-]/, "");
+  return { pos, color, text };
 }
 
 if (typeof module !== "undefined") {
   module.exports = { isStaleResponse, pieceGlyph, escapeHtml, fenToGrid,
                      evalWhiteToText, evalToGaugePct, seatDisplayName,
-                     gaugeTextPlacement };
+                     gaugeTextStyle };
 }
