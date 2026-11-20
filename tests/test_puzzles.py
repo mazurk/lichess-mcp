@@ -291,7 +291,7 @@ def test_puzzle_scores_and_stats():
     assert s["attempts"] == 3
     assert s["correct"] == 2
     assert s["solved"] == 1
-    assert s["first_try"] == 0  # résolu au 2e coup, pas au 1er
+    assert s["first_try"] == 0  # coup refusé avant -> pas un « first try » (#87)
 
     stats = server.puzzle_stats()
     assert stats["total"]["attempts"] == 3
@@ -335,13 +335,49 @@ def test_puzzle_stats_theme_filter_failed_last(monkeypatch, tmp_path):
 
 
 def test_puzzle_scores_first_try():
-    """Issue #72 : un puzzle résolu dès le premier coup compte en first_try."""
+    """Issues #72/#87 : un puzzle résolu sans aucun coup refusé compte en
+    first_try (y compris un mat en 1 résolu au tout premier coup)."""
     mate1 = next(p for p in server.PUZZLES if p.get("MateIn", 1) == 1)
     server._start_puzzle(mate1)
     server.try_puzzle_move(mate1["PuzzleId"], mate1["Moves"].split()[0])
     s = server.PUZZLE_SCORES[mate1["Theme"]]
     assert s["solved"] == 1 and s["first_try"] == 1
     assert server.puzzle_stats()["by_theme"][mate1["Theme"]]["first_try_rate"] == 100.0
+
+
+def test_puzzle_first_try_multi_coups_sans_refus():
+    """Issue #87 : first_try = résolu SANS aucun coup refusé — y compris un
+    puzzle multi-coups (avant : seules les résolutions au 1er coup, mats en 1,
+    comptaient). Un refus puis résolution laisse first_try inchangé."""
+    mate2 = next(p for p in server.PUZZLES if p.get("MateIn") == 2)
+    theme = mate2["Theme"]
+    # 1) résolution virginale en plusieurs coups, zéro refus -> first_try +1
+    server._start_puzzle(mate2)
+    pid = mate2["PuzzleId"]
+    line = mate2["Moves"].split()
+    final = _play_line(pid, line)
+    assert final["correct"] is True and final["solved"] is True
+    s = server.PUZZLE_SCORES[theme]
+    assert s["solved"] == 1 and s["first_try"] == 1
+    t = server.puzzle_stats(theme=theme)["by_theme"][theme]
+    assert t["first_try_rate"] == 100.0
+    # 2) même thème, autre puzzle : un coup refusé puis résolution complète
+    mate2b = next(p for p in server.PUZZLES
+                  if p.get("MateIn") == 2 and p["PuzzleId"] != pid)
+    server._start_puzzle(mate2b)
+    pid_b = mate2b["PuzzleId"]
+    line_b = mate2b["Moves"].split()
+    board = chess.Board(mate2b["FEN"])
+    in_line = set(line_b)
+    wrong = next(m.uci() for m in board.legal_moves if m.uci() not in in_line)
+    r = server.try_puzzle_move(pid_b, wrong)
+    assert r["correct"] is False
+    final_b = _play_line(pid_b, line_b)
+    assert final_b["solved"] is True
+    s = server.PUZZLE_SCORES[theme]
+    assert s["solved"] == 2 and s["first_try"] == 1  # le refus disqualifie
+    t = server.puzzle_stats(theme=theme)["by_theme"][theme]
+    assert t["first_try_rate"] == 50.0
 
 
 def test_puzzle_scores_persisted(monkeypatch, tmp_path):
