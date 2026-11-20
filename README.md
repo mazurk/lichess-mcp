@@ -23,8 +23,9 @@ format Lichess (FEN + coups UCI).
   `analyze_pgn` (n'importe quel PGN) retournent un PGN annoté compatible
   Lichess (`[%eval ...]`, blunders/erreurs/imprécisions marqués) avec le
   meilleur coup à chaque erreur. `analyze_game` **publie** aussi l'analyse sur
-  l'interface web (`publish=True`, défaut) : jauge d'évaluation par coup et
-  coups gaffés colorés pour le debrief.
+  l'interface web (`publish=True`, défaut) : **jauge d'évaluation verticale**
+  façon lichess à droite de l'échiquier (mise à jour à la navigation coup par
+  coup), courbe d'avantage par coup et coups gaffés colorés pour le debrief.
   Côté perf : chaque position n'est analysée qu'une seule fois (le résultat du
   coup précédent est réutilisé), et Stockfish tourne en **mono-thread si
   `depth <= 10`**, multi-cœurs (`min(cœurs, 4)`) au-delà — l'overhead des
@@ -131,13 +132,15 @@ est aussi dans le `serverInfo` de la réponse MCP `initialize` (`__version__` da
 `server.py`, synchronisé avec `package.json`).
 
 La page permet de créer une partie (contre le moteur ou partie libre, avec
-les noms des joueurs), de la rejoindre par son identifiant — ou de la regarder
-en **mode spectateur** (case à cocher) —, de consulter les parties analysées
-(mode **Analyse**), les échiquiers d'analyse dry-run (mode **Dry-run**) et les
-puzzles publiés (mode **Puzzles**), de jouer à la souris (coups légaux
-surlignés, promotion gérée), de suivre les coups en temps réel
-(rafraîchissement automatique) et de naviguer dans l'historique coup par coup
-— y compris jusqu'à la **position initiale** (avant le 1er coup). Un bouton
+les noms des joueurs), de la rejoindre — **en la sélectionnant directement dans
+la liste** (bouton « Rejoindre ») ou en la regardant en **mode spectateur** —,
+de consulter les parties analysées (mode **Analyse**, bouton « Consulter »), les
+échiquiers d'analyse dry-run (mode **Dry-run**) et les puzzles publiés (mode
+**Puzzles**), de jouer à la souris (coups légaux surlignés, promotion gérée),
+de suivre les coups en temps réel (rafraîchissement automatique) et de naviguer
+dans l'historique coup par coup — y compris jusqu'à la **position initiale**
+(avant le 1er coup). Les camps sont libellés simplement sous l'échiquier
+(repère de couleur + nom du joueur, « Libre » si le camp est vide). Un bouton
 **Abandonner la partie** est proposé aux joueurs (jamais aux spectateurs), et
 toute fin de partie (abandon, mat, drapeau) **nomme le vainqueur**. Si un
 `analyze_game` est lancé pendant qu'une partie ou un puzzle est en cours, une

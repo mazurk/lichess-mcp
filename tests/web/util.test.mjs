@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { isStaleResponse, pieceGlyph, escapeHtml, fenToGrid, evalWhiteToText } from "../../web/util.js";
+import { isStaleResponse, pieceGlyph, escapeHtml, fenToGrid, evalWhiteToText,
+         evalToGaugePct, seatDisplayName } from "../../web/util.js";
 
 const state = (gameId, moves) => ({ game_id: gameId, moves });
 
@@ -92,4 +93,36 @@ test("evalWhiteToText : centipions et mats", () => {
   assert.equal(evalWhiteToText(0), "0.0");
   assert.equal(evalWhiteToText(99900), "M1");
   assert.equal(evalWhiteToText(-99900), "-M1");
+});
+
+test("evalToGaugePct : égalité -> 50 %", () => {
+  assert.equal(evalToGaugePct(0), 50);
+});
+
+test("evalToGaugePct : mat blanc -> ~100 %, mat noir -> ~0 %", () => {
+  assert.ok(evalToGaugePct(99900) > 99.9);
+  assert.ok(evalToGaugePct(-99900) < 0.1);
+});
+
+test("evalToGaugePct : +4 pions -> ~88 %, -4 pions -> ~12 % (sigmoïde lichess)", () => {
+  assert.ok(Math.abs(evalToGaugePct(400) - 88) < 1);
+  assert.ok(Math.abs(evalToGaugePct(-400) - 12) < 1);
+  // symétrie
+  assert.ok(Math.abs(evalToGaugePct(250) + evalToGaugePct(-250) - 100) < 1e-9);
+});
+
+test("evalToGaugePct : entrée invalide -> null (jauge masquée)", () => {
+  assert.equal(evalToGaugePct(null), null);
+  assert.equal(evalToGaugePct("abc"), null);
+  assert.equal(evalToGaugePct(NaN), null);
+  assert.equal(evalToGaugePct(undefined), null);
+});
+
+test("seatDisplayName : nom valide conservé, sinon « Libre » (issue #89)", () => {
+  assert.equal(seatDisplayName("Alice", "white"), "Alice");
+  assert.equal(seatDisplayName("Bob", "black"), "Bob");
+  assert.equal(seatDisplayName("Blancs", "white"), "Libre");
+  assert.equal(seatDisplayName("Noirs", "black"), "Libre");
+  assert.equal(seatDisplayName("", "white"), "Libre");
+  assert.equal(seatDisplayName(undefined, "black"), "Libre");
 });

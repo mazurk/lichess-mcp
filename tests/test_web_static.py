@@ -12,9 +12,9 @@ UTIL = (REPO / "web" / "util.js").read_text(encoding="utf-8")
 # « setStatus is not defined » qui cassait tout le rendu.
 PAGE_FUNCTIONS = [
     "setStatus", "setResult", "afterState", "render", "renderBoardLabels",
-    "startPolling", "stopPolling", "refresh", "newGame", "joinGame",
-    "playMove", "onSquare", "sideName", "pieceGlyph", "isStaleResponse",
-    "escapeHtml", "api",
+    "renderEvalGauge", "startPolling", "stopPolling", "refresh", "newGame",
+    "joinGame", "playMove", "onSquare", "sideName", "pieceGlyph",
+    "isStaleResponse", "escapeHtml", "api",
 ]
 
 
@@ -82,3 +82,37 @@ def test_version_badge_present_in_page_and_js():
     assert "#versionBadge" in HTML  # position: fixed, coin haut gauche
     assert "/web/api/version" in APP_JS
     assert "loadVersionBadge" in APP_JS
+
+
+def test_eval_gauge_present_in_page_and_js():
+    """Jauge d'évaluation verticale à droite de l'échiquier (issue #89) :
+    élément + CSS dans index.html, rendu + fonction de conversion dans app.js/util.js."""
+    assert 'id="evalgauge"' in HTML
+    assert 'id="evalgauge-fill"' in HTML
+    assert ".evalgauge" in HTML  # CSS de la jauge
+    assert "function renderEvalGauge(" in APP_JS
+    assert "evalToGaugePct" in APP_JS and "evalToGaugePct" in UTIL
+
+
+def test_analysis_mode_button_is_consulter():
+    """Issue #89 : le bouton du mode analyse s'appelle « Consulter » (il ouvre
+    une analyse déjà produite, ne la lance pas)."""
+    assert 'analysis: "Consulter"' in APP_JS
+    assert 'analysis: "Analyser"' not in APP_JS
+
+
+def test_game_select_opens_game_directly():
+    """Issue #89 : sélectionner une partie dans la liste l'ouvre directement
+    (plus besoin de cliquer ensuite sur le bouton d'action)."""
+    assert 'getElementById("gameId").onchange' in APP_JS
+
+
+def test_seat_labels_plain_name_and_libre():
+    """Issue #89 : libellés de camp = repère couleur + nom seul ; « Libre » si
+    le camp est vide (util.js seatDisplayName, utilisé par app.js)."""
+    assert "seatDisplayName" in UTIL and '"Libre"' in UTIL
+    assert "seatDisplayName" in APP_JS
+    assert "seat-dot" in HTML  # repère léger de la couleur du camp
+    # l'ancien préfixe « Blancs — <nom> » des libellés de camp est supprimé
+    assert '"Blancs" : "Noirs") + " — "' not in APP_JS
+    assert '(color === "white" ? "Blancs" : "Noirs") + " — "' not in APP_JS
