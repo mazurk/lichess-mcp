@@ -617,7 +617,7 @@ async function loadPuzzleStats() {
   const t = data.total || {};
   let html = '<b>Scores par thème</b> — ' + (t.solved || 0) + ' résolu(s), '
     + (t.correct || 0) + '/' + (t.attempts || 0) + ' coups OK (' + (t.success_rate || 0) + ' %)'
-    + (t.solved ? ', 1er coup ' + (t.first_try_rate || 0) + ' %' : '') + '<br>';
+    + (t.solved ? ', 1er essai ' + (t.first_try_rate || 0) + ' %' : '') + '<br>';
   const themes = Object.keys(data.by_theme || {});
   if (!themes.length) {
     html += '<i>Aucun essai enregistré pour le moment.</i>';
@@ -626,7 +626,7 @@ async function loadPuzzleStats() {
       const s = data.by_theme[th];
       return escapeHtml(th) + ' : ' + s.solved + ' résolu(s) · ' + s.correct + '/' + s.attempts
         + ' (' + s.success_rate + ' %)'
-        + (s.solved ? ' · 1er coup ' + s.first_try_rate + ' %' : '');
+        + (s.solved ? ' · 1er essai ' + s.first_try_rate + ' %' : '');
     }).join('<br>');
   }
   el.innerHTML = html;

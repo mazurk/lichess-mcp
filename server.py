@@ -55,7 +55,7 @@ def _build_auth() -> TokenVerifier | None:
 # (badge #versionBadge) pour valider rapidement la version déployée.
 # Le commit court est injecté au build Docker (ARG GIT_COMMIT, voir Dockerfile
 # et docs/DEPLOIEMENT.md §6) et exposé via /web/api/version.
-__version__ = "0.10"
+__version__ = "0.11"
 
 
 def _git_commit() -> str | None:
@@ -95,14 +95,14 @@ ACTIVE_PUZZLES: dict[str, dict] = {}
 # Scores d'entraînement par thème de puzzle (issue #72), persistés :
 # thème -> {attempts, correct, solved, first_try, last_puzzle_id} — attempts =
 # coups tentés, correct = coups validés, failed = attempts - correct, solved =
-# puzzles résolus, first_try = résolus dès le premier coup proposé (taux de
-# réussite « du premier coup »), last_puzzle_id = dernier puzzle tenté (issue #82).
+# puzzles résolus, first_try = résolus sans aucun coup refusé (« du premier
+# essai », issue #87), last_puzzle_id = dernier puzzle tenté (issue #82).
 PUZZLE_SCORES: dict[str, dict] = {}
 
 
 def _puzzle_scores_bump(theme: str, *, correct: bool, solved: bool,
-                        first_ply: bool, puzzle_id: str | None = None) -> None:
-    """Incrémente les compteurs du thème (issues #72/#82). Appelé à chaque
+                        first_try: bool, puzzle_id: str | None = None) -> None:
+    """Incrémente les compteurs du thème (issues #72/#82/#87). Appelé à chaque
     try_puzzle_move ; persisté via _persist."""
     s = PUZZLE_SCORES.setdefault(
         theme, {"attempts": 0, "correct": 0, "solved": 0, "first_try": 0,
@@ -112,7 +112,7 @@ def _puzzle_scores_bump(theme: str, *, correct: bool, solved: bool,
         s["correct"] += 1
     if solved:
         s["solved"] += 1
-        if first_ply:
+        if first_try:
             s["first_try"] += 1
     if puzzle_id is not None:
         s["last_puzzle_id"] = puzzle_id
@@ -181,6 +181,7 @@ def _game_to_json(game_id: str, game: dict) -> dict:
         "last_analysis_at": game.get("last_analysis_at"),
         "puzzle_id": (puzzle or {}).get("puzzle", {}).get("PuzzleId"),
         "puzzle_plies_done": (puzzle or {}).get("plies_done"),
+        "puzzle_had_failed": (puzzle or {}).get("had_failed", False),
     }
 
 
@@ -222,7 +223,8 @@ def _game_from_json(data: dict) -> tuple[str, dict]:
         if puzzle is not None:
             game["puzzle"] = {"puzzle": puzzle, "board": board,
                               "plies_done": data.get("puzzle_plies_done", 0),
-                              "solver_parity": _puzzle_solver_parity(puzzle)}
+                              "solver_parity": _puzzle_solver_parity(puzzle),
+                              "had_failed": data.get("puzzle_had_failed", False)}
     return data["game_id"], game
 
 
@@ -250,6 +252,7 @@ def _persist() -> None:
                     "root_fen": s["board"].root().fen(),
                     "moves": [m.uci() for m in s["board"].move_stack],
                     "plies_done": s["plies_done"],
+                    "had_failed": s.get("had_failed", False),
                 }
                 for s in ACTIVE_PUZZLES.values()
                 if "puzzle" in s
@@ -308,6 +311,7 @@ def _load_state() -> None:
             ACTIVE_PUZZLES[s["puzzle_id"]] = {
                 "puzzle": puzzle, "board": board, "plies_done": s["plies_done"],
                 "solver_parity": _puzzle_solver_parity(puzzle),
+                "had_failed": s.get("had_failed", False),
             }
         except Exception as exc:  # noqa: BLE001
             print(f"lichess-mcp: session puzzle {s.get('puzzle_id')} non restaurée : {exc}",
@@ -1433,6 +1437,7 @@ def _start_puzzle(puzzle: dict) -> dict:
         "board": board.copy(),  # stack conservée : persistance root_fen + moves
         "plies_done": plies_done,
         "solver_parity": _puzzle_solver_parity(puzzle),
+        "had_failed": False,  # issue #87 : un coup refusé disqualifie le first_try
     }
     ACTIVE_PUZZLES[puzzle["PuzzleId"]] = session
     _persist()
@@ -1560,7 +1565,8 @@ def puzzle_stats(theme: str | None = None) -> dict:
 
     Pour chaque thème : `attempts` (coups tentés), `correct` (coups validés),
     `failed` (coups refusés), `solved` (puzzles résolus), `first_try` (résolus
-    dès le premier coup), `last_puzzle_id`, `success_rate` (% de coups
+    sans aucun coup refusé — « du premier essai », issue #87),
+    `last_puzzle_id`, `success_rate` (% de coups
     validés) et `first_try_rate` (% de résolutions au premier essai). Un
     `total` agrège la vue demandée. Sert à cibler l'entraînement sur les
     familles d'erreurs réelles de l'agent. Persisté côté serveur (state JSON).
@@ -1613,7 +1619,8 @@ def start_puzzle(puzzle_id: str | None = None,
     # poussés sur game["board"], visible sur le web en temps réel.
     game["puzzle"] = {"puzzle": puzzle, "board": game["board"],
                       "plies_done": plies_done,
-                      "solver_parity": _puzzle_solver_parity(puzzle)}
+                      "solver_parity": _puzzle_solver_parity(puzzle),
+                      "had_failed": False}
     return {
         "game_id": game_id,
         "puzzle_id": puzzle["PuzzleId"],
@@ -1759,7 +1766,8 @@ def try_puzzle_move(puzzle_id: str, move: str,
     if (not matches_line) and not alternative:
         # refus explicite : rappeler la réponse adverse déjà jouée pour
         # éviter les essais à l'aveugle (issue #52, mate2_090)
-        _puzzle_scores_bump(theme, correct=False, solved=False, first_ply=False,
+        session["had_failed"] = True  # issue #87 : refus = plus un « first try »
+        _puzzle_scores_bump(theme, correct=False, solved=False, first_try=False,
                             puzzle_id=puzzle["PuzzleId"])
         _persist()
         note = f"{board.san(parsed)} n'est pas la solution. Réessayez."
@@ -1794,7 +1802,6 @@ def _apply_puzzle_move(puzzle: dict, session: dict, parsed: chess.Move,
     mate_in = puzzle.get("MateIn", 1)
     parity = session.get("solver_parity", _puzzle_solver_parity(puzzle))
     plies_done = session["plies_done"]
-    first_ply = (plies_done == parity)
     san = board.san(parsed)
     board.push(parsed)
     plies_done += 1
@@ -1817,8 +1824,11 @@ def _apply_puzzle_move(puzzle: dict, session: dict, parsed: chess.Move,
     session["plies_done"] = plies_done
     if solved_now:
         session["solved"] = True
+    # issue #87 : « first try » = puzzle résolu SANS aucun coup refusé, même
+    # en plusieurs coups (avant : seulement « résolu au tout premier coup »).
+    first_try = solved_now and not session.get("had_failed", False)
     _puzzle_scores_bump(theme, correct=True, solved=solved_now,
-                        first_ply=(first_ply and solved_now),
+                        first_try=first_try,
                         puzzle_id=puzzle["PuzzleId"])
     _persist()
     if solved_now:
