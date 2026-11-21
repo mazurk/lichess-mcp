@@ -93,14 +93,19 @@ function gaugeEvalCp(state, viewPly, isLiveFlag) {
   const hasLive = !!(live && typeof live.eval_white === "number");
   const hasHist = Object.keys(liveEvals).length > 0;
   const hasData = hasAnalysis || hasLive || hasHist;
-  const k = (viewPly === null || isLiveFlag) ? moves.length : viewPly;
+  const inLive = viewPly === null || isLiveFlag;
+  const k = inLive ? moves.length : viewPly;
   let evalCp = null;
   if (hasAnalysis && k >= 1 && k <= analysis.evals.length) {
+    // mode Analyse : UNIQUEMENT le PGN d'analyse — jamais le cache live
     evalCp = analysis.evals[k - 1].eval_white;
-  } else if (k >= 1 && liveEvals[String(k - 1)] !== undefined) {
-    evalCp = liveEvals[String(k - 1)];
-  } else if ((viewPly === null || isLiveFlag) && hasLive) {
+  } else if (inLive && hasLive) {
+    // position courante : eval live calculée APRÈS le dernier coup joué
+    // (issue #94 vague 4 : ne PAS lire live_evals[k-1] = position précédente)
     evalCp = live.eval_white;
+  } else if (k >= 1 && liveEvals[String(k - 1)] !== undefined) {
+    // navigation : eval live de la position passée (pli k-1)
+    evalCp = liveEvals[String(k - 1)];
   }
   return { evalCp, hasData };
 }

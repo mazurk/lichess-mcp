@@ -157,7 +157,7 @@ test("gaugeEvalCp : mode Analyse = PGN d'analyse UNIQUEMENT, jamais le cache liv
   assert.deepEqual(gaugeEvalCp(state, 1, false), { evalCp: 30, hasData: true });
 });
 
-test("gaugeEvalCp : partie en cours, spectateur — live_evals en navigation, live_eval en direct (issue #94)", () => {
+test("gaugeEvalCp : partie en cours, spectateur — live_eval en DIRECT, live_evals en navigation (issue #94)", () => {
   const state = {
     moves: ["e4", "e5"],
     live_eval: { eval_white: 52 },
@@ -170,6 +170,19 @@ test("gaugeEvalCp : partie en cours, spectateur — live_evals en navigation, li
   assert.deepEqual(gaugeEvalCp(state, 2, false), { evalCp: 52, hasData: true });
   // position initiale : pas d'eval, mais jauge visible (neutre)
   assert.deepEqual(gaugeEvalCp(state, 0, false), { evalCp: null, hasData: true });
+});
+
+test("gaugeEvalCp : anti-régression décalage d'un demi-coup (issue #94 vague 4)", () => {
+  // En direct, la jauge doit lire live_eval (position APRÈS le dernier coup),
+  // JAMAIS live_evals[k-1] (position précédente) — même si les deux existent.
+  const state = {
+    moves: ["e4", "e5", "Nf3"],
+    live_eval: { eval_white: 706 },          // eval après 3. Nf3 (position courante)
+    live_evals: { "0": 40, "1": 52, "2": 559 }, // position précédente = 559
+  };
+  assert.equal(gaugeEvalCp(state, null, true).evalCp, 706);   // direct -> live_eval
+  assert.equal(gaugeEvalCp(state, 3, false).evalCp, 559);     // navigation pli 3 -> live_evals[2]
+  assert.equal(gaugeEvalCp(state, 2, false).evalCp, 52);
 });
 
 test("gaugeEvalCp : aucune donnée -> jauge masquée", () => {
