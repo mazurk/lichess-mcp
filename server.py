@@ -55,7 +55,7 @@ def _build_auth() -> TokenVerifier | None:
 # (badge #versionBadge) pour valider rapidement la version déployée.
 # Le commit court est injecté au build Docker (ARG GIT_COMMIT, voir Dockerfile
 # et docs/DEPLOIEMENT.md §6) et exposé via /web/api/version.
-__version__ = "0.16"
+__version__ = "0.17"
 
 
 def _git_commit() -> str | None:
@@ -152,20 +152,37 @@ _LIVE_RUNNING: set[str] = set()  # game_ids en cours de calcul live
 
 def _live_eval_compute(game: dict) -> dict:
     """Calcule l'évaluation Stockfish de la position courante (issue #94).
-    Factorisée pour être monkeypatchée dans les tests (pas de Stockfish en local)."""
+
+    SNAPSHOT ATOMIQUE : le plateau et le nombre de coups sont capturés AVANT le
+    calcul Stockfish — ainsi `eval`/`fen`/`at_ply` de la réponse proviennent de
+    la MÊME position, même si un coup est joué pendant le calcul (sinon la
+    réponse était incohérente : `plies` frais mais eval/fen périmés).
+    Factorisée pour être monkeypatchée dans les tests (pas de Stockfish en local).
+    """
     from analysis import evaluate_position
-    res = evaluate_position(game["board"], depth=_LIVE_EVAL_DEPTH)
-    res["at_ply"] = len(game["board"].move_stack)
+    board = game["board"].copy(stack=True)  # snapshot avant calcul
+    at_ply = len(board.move_stack)
+    res = evaluate_position(board, depth=_LIVE_EVAL_DEPTH)
+    res["at_ply"] = at_ply
     res["at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     return res
 
 
+def _live_evals_record(game: dict, res: dict) -> None:
+    """Historique live par pli (issue #94 retour : évals des positions passées
+    visibles pour le spectateur en navigation)."""
+    game.setdefault("live_evals", {})[res["at_ply"]] = res["eval_white"]
+
+
 def _live_eval_worker(game_id: str) -> None:
-    """Thread d'arrière-plan : calcule l'eval live et le met en cache sur la partie."""
+    """Thread d'arrière-plan : calcule l'eval live et la met en cache sur la
+    partie. Si un coup est arrivé pendant le calcul, relance pour rattraper."""
     game = GAMES.get(game_id)
     try:
         if game is not None:
-            game["live_eval"] = _live_eval_compute(game)
+            res = _live_eval_compute(game)
+            game["live_eval"] = res
+            _live_evals_record(game, res)
             game["live_eval_error"] = None
     except Exception as exc:  # noqa: BLE001 — moteur absent, etc. : on loggue, on ne crash pas
         if game is not None:
@@ -173,6 +190,12 @@ def _live_eval_worker(game_id: str) -> None:
     finally:
         with _LIVE_LOCK:
             _LIVE_RUNNING.discard(game_id)
+        # un coup est arrivé pendant le calcul : relancer immédiatement
+        if (game is not None and game.get("kind") == "game" and not _is_over(game)
+                and game["spectators"]
+                and len(game["board"].move_stack)
+                != (game.get("live_eval") or {}).get("at_ply")):
+            _maybe_live_eval(game_id)
 
 
 def _maybe_live_eval(game_id: str) -> None:
@@ -183,6 +206,7 @@ def _maybe_live_eval(game_id: str) -> None:
         return
     if not game["spectators"]:
         game["live_eval"] = None
+        game["live_evals"] = {}
         return
     with _LIVE_LOCK:
         if game_id in _LIVE_RUNNING:
@@ -193,13 +217,15 @@ def _maybe_live_eval(game_id: str) -> None:
 
 def _live_eval_now(game_id: str) -> dict:
     """Issue #94 : eval live synchrone (outil MCP spectator_analysis) — retourne
-    le cache s'il est frais (même nombre de coups), sinon recalcule."""
+    le cache s'il est frais (même nombre de coups), sinon recalcule (snapshot)."""
     game = _get_game(game_id)
     live = game.get("live_eval")
     if live and live.get("at_ply") == len(game["board"].move_stack):
         return live
-    game["live_eval"] = _live_eval_compute(game)
-    return game["live_eval"]
+    res = _live_eval_compute(game)
+    game["live_eval"] = res
+    _live_evals_record(game, res)
+    return res
 # Alertes « triche détectée » : tout appel à analyze_game effectué alors
 # qu'une partie ou un puzzle est en cours y est enregistré (alerte globale,
 # quel que soit l'échiquier analysé) et affiché sur l'interface web.
@@ -724,6 +750,7 @@ def _create_game(white_name: str, black_name: str, level: str,
         "last_analysis_at": None,  # horodatage de la dernière analyze_game sur cet échiquier
         "live_eval": None,  # issue #94 : eval temps réel spectateurs (éphémère, non persisté)
         "live_eval_error": None,
+        "live_evals": {},  # issue #94 : historique live par pli {ply: eval_white}
     }
     _maybe_start_clock(game)
     game_id = uuid.uuid4().hex[:8]
@@ -2219,12 +2246,14 @@ def spectator_analysis(game_id: str) -> dict:
             "spectator_analysis ne s'applique qu'aux parties en cours/terminées."
         )
     live = _live_eval_now(game_id)
+    # Cohérence atomique (issue #94 retour) : plies/fen/eval viennent du MÊME
+    # snapshot (live["at_ply"] / live["fen"]), pas du plateau courant.
     return {
         "game_id": game_id,
         "over": _is_over(game),
         "spectators": len(game["spectators"]),
-        "turn": "white" if game["board"].turn == chess.WHITE else "black",
-        "plies": len(game["board"].move_stack),
+        "turn": "white" if chess.Board(live["fen"]).turn == chess.WHITE else "black",
+        "plies": live["at_ply"],
         **live,
     }
 
@@ -2389,6 +2418,7 @@ def _web_state(game_id: str, game: dict, your_color: str | None,
         # spectateurs (spectator=1) — jamais à un joueur de la partie en cours.
         "live_eval": game.get("live_eval") if spectator else None,
         "live_eval_error": game.get("live_eval_error") if spectator else None,
+        "live_evals": game.get("live_evals") if spectator else None,
     }
 
 
@@ -2607,6 +2637,7 @@ async def web_get_game(request: Request) -> JSONResponse:
     # issue #94 : sans spectateur, on ne garde pas d'eval live en mémoire
     if game.get("kind") == "game" and not _is_over(game) and not game["spectators"]:
         game["live_eval"] = None
+        game["live_evals"] = {}
     spectator = request.query_params.get("spectator") == "1"
     return JSONResponse(_web_state(game_id, game, your_color, spectator=spectator))
 

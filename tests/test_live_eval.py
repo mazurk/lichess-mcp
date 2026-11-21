@@ -179,3 +179,103 @@ def test_evaluate_position_requires_stockfish(monkeypatch):
     monkeypatch.setattr(analysis, "stockfish_path", lambda: None)
     with pytest.raises(ValueError, match="Stockfish"):
         analysis.evaluate_position(chess.Board(), depth=10)
+
+
+def _wait_live_ply(gid, ply, timeout=8.0):
+    """Attend que le cache live atteigne le pli donné (et plus de worker actif)."""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        game = server.GAMES.get(gid)
+        le = (game or {}).get("live_eval")
+        with server._LIVE_LOCK:
+            running = gid in server._LIVE_RUNNING
+        if le and le.get("at_ply") == ply and not running:
+            return True
+        time.sleep(0.05)
+    return False
+
+
+def test_live_eval_compute_snapshots_position(monkeypatch):
+    """Issue #94 retour : snapshot atomique — eval/fen/at_ply viennent de la même
+    position, même si un coup est joué pendant le calcul."""
+    import analysis
+    seen = {}
+
+    def fake_eval(board, depth=10):
+        seen["fen"] = board.fen()
+        seen["plies"] = len(board.move_stack)
+        return {"eval_white": 42, "eval": "+0.42", "pv_uci": [], "pv_san": [],
+                "depth": depth, "fen": board.fen()}
+
+    monkeypatch.setattr(analysis, "evaluate_position", fake_eval)
+    gid = _mk_game()
+    game = server.GAMES[gid]
+    res = server._live_eval_compute(game)
+    # un coup joué APRÈS le calcul ne doit pas corrompre at_ply/fen du résultat
+    game["board"].push(chess.Move.from_uci("e2e4"))
+    assert res["at_ply"] == 0
+    assert res["fen"] == seen["fen"]
+    assert seen["plies"] == 0
+
+
+def test_live_eval_catches_up_after_move_during_compute(client, monkeypatch):
+    """Issue #94 retour : un coup joué pendant le calcul déclenche un recalcul
+    (le worker relance) — la jauge ne reste pas figée."""
+    def slow_compute(game):
+        board = game["board"].copy(stack=True)
+        ply = len(board.move_stack)
+        time.sleep(0.4)  # simule le temps Stockfish
+        return {"eval_white": 100 + ply, "eval": "+1.00", "pv_uci": [],
+                "pv_san": [], "depth": 10, "fen": board.fen(),
+                "at_ply": ply, "at": "now"}
+
+    monkeypatch.setattr(server, "_live_eval_compute", slow_compute)
+    gid = _mk_game()
+    client.post(f"/web/api/games/{gid}/join", json={"name": "Alice", "color": "white"})
+    client.post(f"/web/api/games/{gid}/join", json={"name": "Bob", "spectate": True})
+    time.sleep(0.1)  # le worker démarre (calcul en cours)
+    client.post(f"/web/api/games/{gid}/move",
+                json={"move": "e2e4", "your_color": "white", "your_name": "Alice"})
+    assert _wait_live_ply(gid, 1), "le cache live doit rattraper le pli 1"
+    assert server.GAMES[gid]["live_eval"]["at_ply"] == 1
+    assert server.GAMES[gid]["live_eval"]["eval_white"] == 101
+
+
+def test_live_evals_history_for_spectator(client, monkeypatch):
+    """Issue #94 retour : évals des positions passées visibles pour le
+    spectateur (live_evals par pli), jamais pour un joueur."""
+    monkeypatch.setattr(server, "_live_eval_compute", _fake_compute)
+    gid = _mk_game()
+    client.post(f"/web/api/games/{gid}/join", json={"name": "Alice", "color": "white"})
+    client.post(f"/web/api/games/{gid}/join", json={"name": "Bob", "spectate": True})
+    assert _wait_live_ply(gid, 0)
+    client.post(f"/web/api/games/{gid}/move",
+                json={"move": "e2e4", "your_color": "white", "your_name": "Alice"})
+    assert _wait_live_ply(gid, 1)
+    hist = server.GAMES[gid]["live_evals"]
+    assert hist == {0: 100, 1: 101}
+    # spectateur web : reçoit l'historique
+    r = client.get(f"/web/api/games/{gid}?spectator=1")
+    assert r.json()["live_evals"] == {"0": 100, "1": 101}
+    # joueur : jamais (fair-play)
+    r = client.get(f"/web/api/games/{gid}?your_color=white")
+    assert r.json()["live_evals"] is None
+
+
+def test_spectator_analysis_response_is_atomically_consistent(monkeypatch):
+    """Issue #94 retour : plies/fen/eval de spectator_analysis viennent du même
+    snapshot (pas de plies frais + eval périmé)."""
+    monkeypatch.setattr(server, "_live_eval_compute", _fake_compute)
+    gid = _mk_game()
+    out = server.spectator_analysis(gid)
+    assert out["plies"] == 0
+    assert out["fen"] == server.GAMES[gid]["board"].fen()
+    assert out["eval_white"] == 100
+    # un coup est joué, puis on rejoue l'outil : tout vient du même snapshot
+    server.GAMES[gid]["board"].push(chess.Move.from_uci("e2e4"))
+    out2 = server.spectator_analysis(gid)  # recalcule (cache périmé) sur snapshot pli 1
+    assert out2["plies"] == 1
+    board_after = chess.Board(out2["fen"])
+    assert len(board_after.move_stack) == 0  # fen racine de la position au pli 1
+    assert board_after.fen() != chess.Board().fen()  # position après e4
+    assert out2["eval_white"] == 101  # fake dépend du pli du snapshot
