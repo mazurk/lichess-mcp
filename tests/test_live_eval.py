@@ -314,6 +314,23 @@ def test_live_evals_history_for_spectator(client, monkeypatch):
     assert r.json()["live_evals"] is None
 
 
+def test_live_eval_follows_mcp_moves(monkeypatch):
+    """Issue #94 : un coup joué via l'outil MCP play_move déclenche aussi le
+    recalcul live (pas seulement l'endpoint web) — la jauge UI suit chaque coup."""
+    monkeypatch.setattr(server, "_live_eval_compute", _fake_compute)
+    gid = _mk_game()
+    server.join_game(gid, "Alice", color="white")
+    server.join_game(gid, "Bob", spectate=True)
+    assert _wait_live_ply(gid, 0)
+    server.play_move(gid, "e2e4", color="white", player="Alice")
+    assert _wait_live_ply(gid, 1), "le coup MCP doit déclencher le recalcul live"
+    assert server.GAMES[gid]["live_eval"]["at_ply"] == 1
+    server.play_move(gid, "e7e5", color="black", player="Bob")
+    assert _wait_live_ply(gid, 2)
+    assert server.GAMES[gid]["live_eval"]["at_ply"] == 2
+    assert server.GAMES[gid]["live_evals"] == {0: 100, 1: 101, 2: 102}
+
+
 def test_spectator_analysis_response_is_atomically_consistent(monkeypatch):
     """Issue #94 retour : plies/fen/eval de spectator_analysis viennent du même
     snapshot (pas de plies frais + eval périmé)."""

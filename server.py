@@ -55,7 +55,7 @@ def _build_auth() -> TokenVerifier | None:
 # (badge #versionBadge) pour valider rapidement la version déployée.
 # Le commit court est injecté au build Docker (ARG GIT_COMMIT, voir Dockerfile
 # et docs/DEPLOIEMENT.md §6) et exposé via /web/api/version.
-__version__ = "0.18"
+__version__ = "0.19"
 
 
 def _git_commit() -> str | None:
@@ -1287,9 +1287,11 @@ def play_move(game_id: str, move: str, color: str | None = None,
     end = _result_text(game)
     if end:
         result["game_over"] = end
-        winner = _winner(game)
-        if winner:
+        if (winner := _winner(game)):
             result["winner"] = winner
+    # issue #94 : recalcul live à chaque coup, y compris joué via l'outil MCP
+    # (pas seulement via l'endpoint web) — après le coup et la réponse moteur.
+    _maybe_live_eval(game_id)
     _persist()
     return result
 

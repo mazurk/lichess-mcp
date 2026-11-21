@@ -276,30 +276,15 @@ function renderEvalGauge() {
   const fill = document.getElementById("evalgauge-fill");
   const text = document.getElementById("evalgauge-text");
   if (!state) { gauge.style.display = "none"; return; }
-  const analysis = state.analysis;
-  const live = state.live_eval;  // issue #94 : eval temps réel (spectateurs uniquement)
-  const liveEvals = state.live_evals || {};  // historique live par pli (spectateurs)
-  const hasAnalysis = !!(analysis && analysis.evals && analysis.evals.length);
-  const hasLive = !!(live && typeof live.eval_white === "number");
-  const hasHist = Object.keys(liveEvals).length > 0;
-  if (!hasAnalysis && !hasLive && !hasHist) {
+  // Logique de choix de l'eval en fonction pure testée (util.js) — la jauge se
+  // re-rend à chaque poll (refresh -> afterState -> render) dès que live_eval
+  // change, donc elle se met à jour après chaque calcul d'évaluation (issue #94).
+  const g = gaugeEvalCp(state, viewPly, isLive());
+  if (!g.hasData) {
     gauge.style.display = "none";
     return;
   }
-  // k = nombre de coups joués dans la position affichée (live = tous les coups)
-  const k = (viewPly === null || isLive()) ? state.moves.length : viewPly;
-  let evalCp = null;
-  if (hasAnalysis && k >= 1 && k <= analysis.evals.length) {
-    // mode Analyse : UNIQUEMENT les données du PGN d'analyse — jamais le cache
-    // live (issue #94 retour : la barre du mode Analyse ne lit que l'analyse)
-    evalCp = analysis.evals[k - 1].eval_white;
-  } else if (k >= 1 && liveEvals[String(k - 1)] !== undefined) {
-    // partie en cours, spectateur : éval live de la position passée (pli k-1)
-    evalCp = liveEvals[String(k - 1)];
-  } else if ((viewPly === null || isLive()) && hasLive) {
-    // position courante sans analyse publiée : eval temps réel
-    evalCp = live.eval_white;
-  }
+  const evalCp = g.evalCp;
   const pct = evalToGaugePct(evalCp === null ? 0 : evalCp);
   if (pct === null) { gauge.style.display = "none"; return; }
   gauge.style.display = "block";
