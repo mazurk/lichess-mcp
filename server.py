@@ -55,7 +55,7 @@ def _build_auth() -> TokenVerifier | None:
 # (badge #versionBadge) pour valider rapidement la version déployée.
 # Le commit court est injecté au build Docker (ARG GIT_COMMIT, voir Dockerfile
 # et docs/DEPLOIEMENT.md §6) et exposé via /web/api/version.
-__version__ = "0.15"
+__version__ = "0.16"
 
 
 def _git_commit() -> str | None:
@@ -131,6 +131,75 @@ _ANALYSIS_LOCK = threading.Lock()
 _ANALYSIS_QUEUE: list[str] = []  # game_ids "queued", ordre FIFO
 _ANALYSIS_COND = threading.Condition(_ANALYSIS_LOCK)
 _ANALYSIS_WORKER_STARTED = False
+
+# Évaluation temps réel pour les spectateurs (issue #94) : game["live_eval"] =
+# {eval_white, eval, pv_uci, pv_san, depth, fen, at_ply, at} — ÉPHÉMÈRE (non
+# persisté), recalculé à chaque coup tant qu'au moins un spectateur observe la
+# partie. Sans spectateur : aucun calcul (économie de la Raspberry Pi).
+# Profondeur via LICHESS_MCP_LIVE_EVAL_DEPTH (défaut 10 = mono-thread, rapide).
+def _env_int(name: str, default: int) -> int:
+    raw = os.environ.get(name, "").strip()
+    try:
+        return max(1, int(raw)) if raw else default
+    except ValueError:
+        return default
+
+
+_LIVE_EVAL_DEPTH = _env_int("LICHESS_MCP_LIVE_EVAL_DEPTH", 10)
+_LIVE_LOCK = threading.Lock()
+_LIVE_RUNNING: set[str] = set()  # game_ids en cours de calcul live
+
+
+def _live_eval_compute(game: dict) -> dict:
+    """Calcule l'évaluation Stockfish de la position courante (issue #94).
+    Factorisée pour être monkeypatchée dans les tests (pas de Stockfish en local)."""
+    from analysis import evaluate_position
+    res = evaluate_position(game["board"], depth=_LIVE_EVAL_DEPTH)
+    res["at_ply"] = len(game["board"].move_stack)
+    res["at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    return res
+
+
+def _live_eval_worker(game_id: str) -> None:
+    """Thread d'arrière-plan : calcule l'eval live et le met en cache sur la partie."""
+    game = GAMES.get(game_id)
+    try:
+        if game is not None:
+            game["live_eval"] = _live_eval_compute(game)
+            game["live_eval_error"] = None
+    except Exception as exc:  # noqa: BLE001 — moteur absent, etc. : on loggue, on ne crash pas
+        if game is not None:
+            game["live_eval_error"] = str(exc)
+    finally:
+        with _LIVE_LOCK:
+            _LIVE_RUNNING.discard(game_id)
+
+
+def _maybe_live_eval(game_id: str) -> None:
+    """Issue #94 : lance l'eval temps réel SI la partie est en cours et observée
+    par au moins un spectateur. Sans spectateur, le cache est vidé (économie)."""
+    game = GAMES.get(game_id)
+    if game is None or game.get("kind") != "game" or _is_over(game):
+        return
+    if not game["spectators"]:
+        game["live_eval"] = None
+        return
+    with _LIVE_LOCK:
+        if game_id in _LIVE_RUNNING:
+            return
+        _LIVE_RUNNING.add(game_id)
+    threading.Thread(target=_live_eval_worker, args=(game_id,), daemon=True).start()
+
+
+def _live_eval_now(game_id: str) -> dict:
+    """Issue #94 : eval live synchrone (outil MCP spectator_analysis) — retourne
+    le cache s'il est frais (même nombre de coups), sinon recalcule."""
+    game = _get_game(game_id)
+    live = game.get("live_eval")
+    if live and live.get("at_ply") == len(game["board"].move_stack):
+        return live
+    game["live_eval"] = _live_eval_compute(game)
+    return game["live_eval"]
 # Alertes « triche détectée » : tout appel à analyze_game effectué alors
 # qu'une partie ou un puzzle est en cours y est enregistré (alerte globale,
 # quel que soit l'échiquier analysé) et affiché sur l'interface web.
@@ -653,6 +722,8 @@ def _create_game(white_name: str, black_name: str, level: str,
         "move_clocks": [],  # temps consommé par coup (debrief)
         "created_at": time.time(),  # début de la partie (référence anti-triche)
         "last_analysis_at": None,  # horodatage de la dernière analyze_game sur cet échiquier
+        "live_eval": None,  # issue #94 : eval temps réel spectateurs (éphémère, non persisté)
+        "live_eval_error": None,
     }
     _maybe_start_clock(game)
     game_id = uuid.uuid4().hex[:8]
@@ -958,6 +1029,7 @@ def join_game(game_id: str, player: str, color: str | None = None,
 
     if spectate:
         game["spectators"][player] = True
+        _maybe_live_eval(game_id)  # issue #94 : un spectateur déclenche l'eval live
         _persist()
         return {
             "game_id": game_id,
@@ -2121,6 +2193,43 @@ def analysis_status(game_id: str) -> dict:
 
 
 @mcp.tool()
+def spectator_analysis(game_id: str) -> dict:
+    """Évaluation Stockfish EN TEMPS RÉEL de la position courante d'une partie
+    observée — **RÉSERVÉ AUX SPECTATEURS** (fair-play : ne JAMAIS l'utiliser sur
+    sa propre partie en cours, ni consulter l'évaluation d'une partie dont on
+    est joueur ; l'eval live n'est d'ailleurs jamais publiée côté web pour les
+    joueurs, issue #94).
+
+    Retourne `eval_white` (centipions, perspective blancs), `eval` (texte :
+    "+1.50", "-0.80", "M3"…), la variante principale Stockfish `pv_san`/`pv_uci`
+    du camp au trait, `depth`, `fen`, `plies`, `turn`, `spectators`.
+
+    Partie en cours : calcul live (profondeur `LICHESS_MCP_LIVE_EVAL_DEPTH`,
+    défaut 10 — mono-thread, économe sur la Raspberry Pi), mis en cache et
+    recalculé à chaque coup tant qu'un spectateur observe. Partie terminée :
+    évaluation de la position finale (plus d'enjeu fair-play).
+
+    Args:
+        game_id: identifiant de la partie observée (kind "game" uniquement).
+    """
+    game = _get_game(game_id)
+    if game.get("kind") != "game":
+        raise ValueError(
+            f"{game_id} n'est pas une partie (kind={game.get('kind')}) : "
+            "spectator_analysis ne s'applique qu'aux parties en cours/terminées."
+        )
+    live = _live_eval_now(game_id)
+    return {
+        "game_id": game_id,
+        "over": _is_over(game),
+        "spectators": len(game["spectators"]),
+        "turn": "white" if game["board"].turn == chess.WHITE else "black",
+        "plies": len(game["board"].move_stack),
+        **live,
+    }
+
+
+@mcp.tool()
 def analyze_pgn(pgn: str, depth: int = 15) -> dict:
     """Analyse une partie au format PGN avec Stockfish.
 
@@ -2219,7 +2328,8 @@ def _game_status(game: dict) -> str:
     return "en cours"
 
 
-def _web_state(game_id: str, game: dict, your_color: str | None) -> dict:
+def _web_state(game_id: str, game: dict, your_color: str | None,
+               spectator: bool = False) -> dict:
     board = game["board"]
     over = _is_over(game)
     grid = [
@@ -2275,6 +2385,10 @@ def _web_state(game_id: str, game: dict, your_color: str | None) -> dict:
         "legal_moves_uci": [] if over or your_color is None else [m.uci() for m in board.legal_moves],
         "last_move": board.peek().uci() if board.move_stack else None,
         "analysis": game.get("analysis"),
+        # Issue #94 + fair-play : l'eval temps réel n'est renvoyée QU'aux
+        # spectateurs (spectator=1) — jamais à un joueur de la partie en cours.
+        "live_eval": game.get("live_eval") if spectator else None,
+        "live_eval_error": game.get("live_eval_error") if spectator else None,
     }
 
 
@@ -2490,7 +2604,11 @@ async def web_get_game(request: Request) -> JSONResponse:
     your_color = request.query_params.get("your_color")
     if your_color not in ("white", "black"):
         your_color = None
-    return JSONResponse(_web_state(game_id, game, your_color))
+    # issue #94 : sans spectateur, on ne garde pas d'eval live en mémoire
+    if game.get("kind") == "game" and not _is_over(game) and not game["spectators"]:
+        game["live_eval"] = None
+    spectator = request.query_params.get("spectator") == "1"
+    return JSONResponse(_web_state(game_id, game, your_color, spectator=spectator))
 
 
 @mcp.custom_route("/web/api/games/{game_id}/join", methods=["POST"])
@@ -2521,7 +2639,7 @@ async def web_join_game(request: Request) -> JSONResponse:
     except ValueError as exc:
         return JSONResponse({"error": str(exc)}, status_code=400)
     your_color = result.get("your_color")
-    state = _web_state(game_id, game, your_color)
+    state = _web_state(game_id, game, your_color, spectator=spectate)
     state["joined"] = True
     return JSONResponse(state)
 
@@ -2577,6 +2695,7 @@ async def web_play_move(request: Request) -> JSONResponse:
     _apply_clock_move(game, your_color)
     if game["engine_color"] and not board.is_game_over():
         await run_in_threadpool(_engine_reply, game)
+    _maybe_live_eval(game_id)  # issue #94 : recalcule l'eval live à chaque coup (si spectateurs)
     _persist()
     return JSONResponse(_web_state(game_id, game, your_color))
 

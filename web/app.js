@@ -91,12 +91,13 @@ async function joinGame() {
       // Consultation d'une partie analysée : pas de nom, perspective au choix.
       const viewColor = document.getElementById("viewColor").value;
       spectator = true;
-      state = await api("/web/api/games/" + encodeURIComponent(game_id) + "?your_color=" + viewColor,
-        {method: "GET"});
+      state = await api("/web/api/games/" + encodeURIComponent(game_id)
+        + "?your_color=" + viewColor + "&spectator=1", {method: "GET"});
     } else if (mode === "dryrun" || mode === "puzzle") {
       // Consultation d'un échiquier d'analyse : spectateur uniquement.
       spectator = true;
-      state = await api("/web/api/games/" + encodeURIComponent(game_id), {method: "GET"});
+      state = await api("/web/api/games/" + encodeURIComponent(game_id) + "?spectator=1",
+        {method: "GET"});
     } else {
       const joinColor = document.getElementById("joinColor").value;
       spectator = joinColor === "spectate";
@@ -189,7 +190,11 @@ async function refresh() {
   if (!state) return;
   try {
     const prev = JSON.stringify(state);
-    const q = spectator || state.your_color === null ? "" : "?your_color=" + state.your_color;
+    // issue #94 : un spectateur demande explicitement l'eval live (spectator=1)
+    const params = [];
+    if (!(spectator || state.your_color === null)) params.push("your_color=" + state.your_color);
+    if (spectator) params.push("spectator=1");
+    const q = params.length ? "?" + params.join("&") : "";
     const next = await api("/web/api/games/" + encodeURIComponent(state.game_id) + q, {method: "GET"});
     if (isStaleResponse(state, next)) return;
     state = next;
@@ -272,13 +277,22 @@ function renderEvalGauge() {
   const text = document.getElementById("evalgauge-text");
   if (!state) { gauge.style.display = "none"; return; }
   const analysis = state.analysis;
-  if (!analysis || !analysis.evals || !analysis.evals.length) {
+  const live = state.live_eval;  // issue #94 : eval temps réel (spectateurs uniquement)
+  const hasAnalysis = analysis && analysis.evals && analysis.evals.length;
+  const hasLive = live && typeof live.eval_white === "number";
+  if (!hasAnalysis && !hasLive) {
     gauge.style.display = "none";
     return;
   }
   // k = nombre de coups joués dans la position affichée (live = tous les coups)
   const k = (viewPly === null || isLive()) ? state.moves.length : viewPly;
-  const evalCp = (k >= 1 && k <= analysis.evals.length) ? analysis.evals[k - 1].eval_white : null;
+  let evalCp = null;
+  if ((viewPly === null || isLive()) && hasLive) {
+    // position courante : eval temps réel du spectateur (issue #94)
+    evalCp = live.eval_white;
+  } else if (hasAnalysis && k >= 1 && k <= analysis.evals.length) {
+    evalCp = analysis.evals[k - 1].eval_white;
+  }
   const pct = evalToGaugePct(evalCp === null ? 0 : evalCp);
   if (pct === null) { gauge.style.display = "none"; return; }
   gauge.style.display = "block";
@@ -439,6 +453,11 @@ function renderGameStatus() {
   }
   if (state.analysed && state.analysis) {
     html += ' <span class="badge analysed">analysée (prof. ' + state.analysis.depth + ")</span>";
+  }
+  if (state.live_eval && !state.over) {
+    // issue #94 : badge « éval temps réel » — reçu uniquement par les spectateurs
+    html += ' <span class="badge live">● éval temps réel (prof. '
+      + (state.live_eval.depth || "?") + ")</span>";
   }
   if (state.puzzle) {
     html += ' <span class="badge puzzle">puzzle ' + escapeHtml(state.puzzle.puzzle_id)
