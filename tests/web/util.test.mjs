@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { isStaleResponse, pieceGlyph, escapeHtml, fenToGrid, evalWhiteToText,
-         evalToGaugePct, seatDisplayName, gaugeTextStyle } from "../../web/util.js";
+         evalToGaugePct, seatDisplayName, gaugeTextStyle, gaugeEvalCp } from "../../web/util.js";
 
 const state = (gameId, moves) => ({ game_id: gameId, moves });
 
@@ -142,4 +142,38 @@ test("gaugeTextStyle : texte du côté de la couleur favorisée, sans signe (iss
   // égalité / eval indisponible -> côté blanc, « 0.0 »
   assert.deepEqual(gaugeTextStyle(0, true), { pos: "bottom", color: "#262421", text: "0.0" });
   assert.deepEqual(gaugeTextStyle(null, false), { pos: "top", color: "#262421", text: "0.0" });
+});
+
+test("gaugeEvalCp : mode Analyse = PGN d'analyse UNIQUEMENT, jamais le cache live (issue #94)", () => {
+  const state = {
+    moves: ["e4", "e5"],
+    analysis: { evals: [{ eval_white: 30 }, { eval_white: -470 }] }, // analyse publiée
+    live_eval: { eval_white: -80 },   // cache live (valeur différente, à ignorer)
+    live_evals: { "0": 30, "1": -80 },
+  };
+  // position courante (live) : l'analyse gagne sur le cache live
+  assert.deepEqual(gaugeEvalCp(state, null, true), { evalCp: -470, hasData: true });
+  // navigation au pli 1 (après e4) : eval de l'analyse, pas live_evals
+  assert.deepEqual(gaugeEvalCp(state, 1, false), { evalCp: 30, hasData: true });
+});
+
+test("gaugeEvalCp : partie en cours, spectateur — live_evals en navigation, live_eval en direct (issue #94)", () => {
+  const state = {
+    moves: ["e4", "e5"],
+    live_eval: { eval_white: 52 },
+    live_evals: { "0": 40, "1": 52 },
+  };
+  // direct : eval live de la position courante (mise à jour à chaque calcul)
+  assert.deepEqual(gaugeEvalCp(state, null, true), { evalCp: 52, hasData: true });
+  // navigation : evals des positions passées (plus à 0)
+  assert.deepEqual(gaugeEvalCp(state, 1, false), { evalCp: 40, hasData: true });
+  assert.deepEqual(gaugeEvalCp(state, 2, false), { evalCp: 52, hasData: true });
+  // position initiale : pas d'eval, mais jauge visible (neutre)
+  assert.deepEqual(gaugeEvalCp(state, 0, false), { evalCp: null, hasData: true });
+});
+
+test("gaugeEvalCp : aucune donnée -> jauge masquée", () => {
+  assert.deepEqual(gaugeEvalCp({ moves: [] }, null, true), { evalCp: null, hasData: false });
+  assert.deepEqual(gaugeEvalCp({ moves: ["e4"], live_eval: null, live_evals: {} }, null, true),
+    { evalCp: null, hasData: false });
 });

@@ -31,10 +31,10 @@ def test_live_eval_wired_in_web_and_server():
     # issue #94 retour : snapshot atomique + historique live par pli
     assert ".copy(stack=True)" in srv
     assert '"live_evals"' in srv
-    # front : mode Analyse = PGN d'analyse UNIQUEMENT (jamais le cache live en
-    # priorité), puis historique live, puis eval live courante
-    assert "hasAnalysis && k >= 1" in APP_JS
-    assert "liveEvals[String(k - 1)]" in APP_JS
+    # front : la jauge passe par la fonction pure testée gaugeEvalCp (priorité
+    # analyse > live_evals > live_eval) et se re-rend à chaque poll via render()
+    assert "gaugeEvalCp" in APP_JS and "gaugeEvalCp" in UTIL
+    assert "renderEvalGauge();" in APP_JS  # appelé dans render(), lui-même appelé par afterState() au poll
     # issue #94 vague 3 : moteur live persistant + profondeur réellement atteinte
     analysis_py = (REPO / "analysis.py").read_text(encoding="utf-8")
     assert "_live_stockfish" in analysis_py and "depth_reached" in analysis_py

@@ -77,6 +77,34 @@ function seatDisplayName(name, color) {
   return (name && String(name) !== def) ? String(name) : "Libre";
 }
 
+function gaugeEvalCp(state, viewPly, isLiveFlag) {
+  // Issue #94 : choisit l'eval (centipions) à afficher sur la jauge pour la
+  // position affichée. Priorités :
+  //  1. mode Analyse (analyse publiée) : UNIQUEMENT le PGN d'analyse
+  //     (analysis.evals[k-1]) — jamais le cache live ;
+  //  2. partie en cours, spectateur : historique live par pli live_evals[k-1] ;
+  //  3. position courante sans analyse : live_eval (eval temps réel).
+  // Retourne {evalCp: number|null, hasData: bool} — hasData=false => jauge masquée.
+  const analysis = state && state.analysis;
+  const live = state && state.live_eval;
+  const liveEvals = (state && state.live_evals) || {};
+  const moves = (state && state.moves) || [];
+  const hasAnalysis = !!(analysis && analysis.evals && analysis.evals.length);
+  const hasLive = !!(live && typeof live.eval_white === "number");
+  const hasHist = Object.keys(liveEvals).length > 0;
+  const hasData = hasAnalysis || hasLive || hasHist;
+  const k = (viewPly === null || isLiveFlag) ? moves.length : viewPly;
+  let evalCp = null;
+  if (hasAnalysis && k >= 1 && k <= analysis.evals.length) {
+    evalCp = analysis.evals[k - 1].eval_white;
+  } else if (k >= 1 && liveEvals[String(k - 1)] !== undefined) {
+    evalCp = liveEvals[String(k - 1)];
+  } else if ((viewPly === null || isLiveFlag) && hasLive) {
+    evalCp = live.eval_white;
+  }
+  return { evalCp, hasData };
+}
+
 function gaugeTextStyle(evalCp, myWhite) {
   // Issue #89 (retours 6-7) : le texte de la jauge s'affiche DU CÔTÉ de la
   // couleur favorisée, sans signe : noir côté blanc, blanc côté noir.
@@ -93,5 +121,5 @@ function gaugeTextStyle(evalCp, myWhite) {
 if (typeof module !== "undefined") {
   module.exports = { isStaleResponse, pieceGlyph, escapeHtml, fenToGrid,
                      evalWhiteToText, evalToGaugePct, seatDisplayName,
-                     gaugeTextStyle };
+                     gaugeTextStyle, gaugeEvalCp };
 }
