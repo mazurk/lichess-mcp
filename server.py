@@ -55,7 +55,7 @@ def _build_auth() -> TokenVerifier | None:
 # (badge #versionBadge) pour valider rapidement la version déployée.
 # Le commit court est injecté au build Docker (ARG GIT_COMMIT, voir Dockerfile
 # et docs/DEPLOIEMENT.md §6) et exposé via /web/api/version.
-__version__ = "0.17"
+__version__ = "0.18"
 
 
 def _git_commit() -> str | None:
@@ -1177,13 +1177,27 @@ def get_board(game_id: str, ply: int | None = None) -> dict:
     return result
 
 
+def _san_safe(board: chess.Board, move: chess.Move) -> str:
+    """SAN d'un coup légal — jamais d'exception, jamais de coup omis
+    (issue #94 retour : un coup legal omis de la liste). En cas d'ambiguïté
+    résiduelle (SAN qui lèverait AmbiguousMoveError), retourne l'UCI, toujours
+    accepté par play_move."""
+    try:
+        return board.san(move)
+    except chess.AmbiguousMoveError:
+        return move.uci()
+
+
 @mcp.tool()
 def legal_moves(game_id: str) -> dict:
-    """Liste tous les coups légaux au format SAN."""
+    """Liste tous les coups légaux au format SAN (UCI si ambiguïté résiduelle)."""
     game = _get_game(game_id)
     if game["board"].is_game_over():
         return {"moves": [], "note": "La partie est terminée."}
-    return {"moves": [game["board"].san(m) for m in game["board"].legal_moves]}
+    board = game["board"]
+    moves = list(board.legal_moves)
+    return {"moves": [_san_safe(board, m) for m in moves],
+            "count": len(moves)}
 
 
 @mcp.tool()

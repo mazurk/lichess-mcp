@@ -8,8 +8,10 @@ qu'un résumé des coups critiques.
 
 from __future__ import annotations
 
+import contextlib
 import os
 import shutil
+import threading
 import time
 
 import chess
@@ -294,13 +296,15 @@ def analyze_moves(moves: list[chess.Move], depth: int = 15,
     }
 
 
-def evaluate_position(board: chess.Board, depth: int = 10) -> dict:
-    """Évaluation Stockfish d'une position unique (issue #94 : jauge d'évaluation
-    temps réel pour les spectateurs).
+_LIVE_ENGINE_STATE: dict = {"engine": None}  # process persistant (évite `global`)
+_live_engine_lock = threading.Lock()
 
-    Retourne `eval_white` (centipions, perspective blancs — convention du projet),
-    `eval` (texte, ex. "+1.50" / "-0.80" / "M3"), la variante principale
-    `pv_uci`/`pv_san` du camp au trait, la `depth` utilisée et le `fen`.
+
+def _live_stockfish():
+    """Process Stockfish PERSISTANT pour l'eval live (issue #94) : évite de
+    respawn un moteur à chaque coup (charge Raspberry Pi) et partage le hash
+    entre les positions évaluées — même comportement que l'analyse post-mortem
+    d'une partie (qui réutilise un seul process), donc des évals cohérentes.
     """
     path = stockfish_path()
     if not path:
@@ -308,16 +312,49 @@ def evaluate_position(board: chess.Board, depth: int = 10) -> dict:
             "Stockfish n'est pas installé. Installez-le (apt install stockfish) "
             "ou définissez LICHESS_MCP_STOCKFISH vers le binaire."
         )
+    with _live_engine_lock:
+        if _LIVE_ENGINE_STATE["engine"] is None:
+            _LIVE_ENGINE_STATE["engine"] = chess.engine.SimpleEngine.popen_uci(path)
+        return _LIVE_ENGINE_STATE["engine"]
+
+
+def _reset_live_engine() -> None:
+    """Tuer le process live persistant (ex. EngineTerminatedError) pour respawn."""
+    with _live_engine_lock:
+        eng = _LIVE_ENGINE_STATE["engine"]
+        _LIVE_ENGINE_STATE["engine"] = None
+    if eng is not None:
+        with contextlib.suppress(Exception):  # process déjà mort
+            eng.quit()
+
+
+def evaluate_position(board: chess.Board, depth: int = 10,
+                      _retried: bool = False) -> dict:
+    """Évaluation Stockfish d'une position unique (issue #94 : jauge d'évaluation
+    temps réel pour les spectateurs). Moteur persistant partagé (voir
+    `_live_stockfish`) pour des évals cohérentes avec le post-mortem.
+
+    Retourne `eval_white` (centipions, perspective blancs — convention du projet),
+    `eval` (texte, ex. "+1.50" / "-0.80" / "M3"), la variante principale
+    `pv_uci`/`pv_san` du camp au trait, la `depth` demandée, la `depth_reached`
+    réellement atteinte (diagnostic issue #94) et le `fen`.
+    """
     depth = max(1, min(int(depth), 30))
     board = board.copy(stack=False)
-    with chess.engine.SimpleEngine.popen_uci(path) as engine:
+    engine = _live_stockfish()  # lève ValueError si Stockfish absent
+    try:
         engine.configure(engine_options(depth))
         info = engine.analyse(board, chess.engine.Limit(depth=depth))
-        mover = board.turn
-        score_cp = _pov_score_cp(info, mover)  # point de vue du camp au trait
-        pv = info.get("pv") or []
-        pv_uci = [m.uci() for m in pv[:8]]
-        pv_san = _pv_to_san(board, pv, max_plies=8)
+    except chess.engine.EngineTerminatedError:
+        if _retried:
+            raise
+        _reset_live_engine()
+        return evaluate_position(board, depth, _retried=True)
+    mover = board.turn
+    score_cp = _pov_score_cp(info, mover)  # point de vue du camp au trait
+    pv = info.get("pv") or []
+    pv_uci = [m.uci() for m in pv[:8]]
+    pv_san = _pv_to_san(board, pv, max_plies=8)
     eval_white = score_cp if mover == chess.WHITE else -score_cp
     text = _eval_str(eval_white)
     if eval_white > 0 and not text.startswith(("M", "-")):
@@ -328,5 +365,6 @@ def evaluate_position(board: chess.Board, depth: int = 10) -> dict:
         "pv_uci": pv_uci,
         "pv_san": pv_san,
         "depth": depth,
+        "depth_reached": info.get("depth"),
         "fen": board.fen(),
     }

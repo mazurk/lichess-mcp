@@ -177,8 +177,60 @@ def test_evaluate_position_requires_stockfish(monkeypatch):
     """analysis.evaluate_position lève une erreur claire sans Stockfish."""
     import analysis
     monkeypatch.setattr(analysis, "stockfish_path", lambda: None)
+    monkeypatch.setattr(analysis, "_LIVE_ENGINE_STATE", {"engine": None})
     with pytest.raises(ValueError, match="Stockfish"):
         analysis.evaluate_position(chess.Board(), depth=10)
+
+
+def test_evaluate_position_uses_persistent_engine_and_reports_depth(monkeypatch):
+    """Issue #94 retour (divergence de valeur) : le moteur live est PERSISTANT
+    (partagé entre appels, comme le post-mortem) et la profondeur réellement
+    atteinte est rapportée (depth_reached) pour diagnostiquer."""
+    import analysis
+
+    class FakeEngine:
+        def __init__(self):
+            self.calls = 0
+            self.configured = []
+
+        def configure(self, opts):
+            self.configured.append(opts)
+
+        def analyse(self, board, limit):
+            self.calls += 1
+            return {"score": chess.engine.PovScore(chess.engine.Cp(40), chess.WHITE),
+                    "pv": [chess.Move.from_uci("e2e4")], "depth": limit.depth}
+
+    fake = FakeEngine()
+    monkeypatch.setattr(analysis, "_live_stockfish", lambda: fake)
+    r1 = analysis.evaluate_position(chess.Board(), depth=10)
+    r2 = analysis.evaluate_position(chess.Board(), depth=10)
+    assert fake.calls == 2                      # même process réutilisé
+    assert r1["depth"] == 10 and r1["depth_reached"] == 10
+    assert r1["eval_white"] == 40 and r1["eval"] == "+0.40"
+    assert r1["pv_san"] == ["e4"] and r1["fen"] == chess.Board().fen()
+    assert r2["eval_white"] == 40
+
+
+def test_san_safe_never_raises_and_legal_moves_complete(monkeypatch):
+    """Issue #94 retour annexe : legal_moves ne doit jamais omettre un coup ni
+    planter (SAN ambigu -> UCI en secours)."""
+    gid = server._create_game("Blancs", "Noirs", "medium", None, kind="game")
+    # position avec deux cavaliers pouvant prendre la même case (c7/f6 x d5)
+    server.GAMES[gid]["board"] = chess.Board("7k/2N5/5N2/3q4/8/8/8/4K3 w - - 0 1")
+    out = server.legal_moves(gid)
+    board = server.GAMES[gid]["board"]
+    assert out["count"] == len(list(board.legal_moves))
+    assert len(out["moves"]) == out["count"]  # aucun coup omis
+    # la prise de la dame en d5 y figure, désambiguïsée (Ncxd5 / Nfxd5)
+    assert any(m in ("Ncd5", "Nfd5", "Ncxd5", "Nfxd5") for m in out["moves"])
+    # cas extrême : san() qui lève -> repli UCI, pas d'exception
+    class BoomBoard(chess.Board):
+        def san(self, move, **kw):
+            raise chess.AmbiguousMoveError("boom")
+    b = BoomBoard("7k/2N5/5N2/3q4/8/8/8/4K3 w - - 0 1")
+    mv = next(iter(b.legal_moves))
+    assert server._san_safe(b, mv) == mv.uci()
 
 
 def _wait_live_ply(gid, ply, timeout=8.0):

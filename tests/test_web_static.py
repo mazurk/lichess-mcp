@@ -35,6 +35,11 @@ def test_live_eval_wired_in_web_and_server():
     # priorité), puis historique live, puis eval live courante
     assert "hasAnalysis && k >= 1" in APP_JS
     assert "liveEvals[String(k - 1)]" in APP_JS
+    # issue #94 vague 3 : moteur live persistant + profondeur réellement atteinte
+    analysis_py = (REPO / "analysis.py").read_text(encoding="utf-8")
+    assert "_live_stockfish" in analysis_py and "depth_reached" in analysis_py
+    # legal_moves : jamais de coup omis (SAN sûr, repli UCI)
+    assert "def _san_safe(" in srv and '"count"' in srv
 
 
 def test_all_page_functions_defined():
