@@ -26,6 +26,9 @@ format Lichess (FEN + coups UCI).
   l'interface web (`publish=True`, défaut) : **jauge d'évaluation verticale**
   façon lichess à droite de l'échiquier (mise à jour à la navigation coup par
   coup), courbe d'avantage par coup et coups gaffés colorés pour le debrief.
+  Pendant une partie en cours, les **spectateurs** voient de plus une jauge
+  d'évaluation **temps réel** (Stockfish, recalculée à chaque coup tant qu'au
+  moins un spectateur observe — jamais transmise aux joueurs).
   Côté perf : chaque position n'est analysée qu'une seule fois (le résultat du
   coup précédent est réutilisé), et Stockfish tourne en **mono-thread si
   `depth <= 10`**, multi-cœurs (`min(cœurs, 4)`) au-delà — l'overhead des
@@ -83,6 +86,7 @@ format Lichess (FEN + coups UCI).
 | `analyze_game(game_id, depth, publish, wait)` | Lance l'analyse Stockfish d'une partie/échiquier **en asynchrone** : rend immédiatement `{analysis_id, status, depth, moves}` (le client MCP a un timeout de 120 s/appel) ; `wait=True` bloque jusqu'au bout (file comprise). **File sérielle** : une seule analyse exécutée à la fois sur le serveur — si une autre est active, la demande part en file (`status: "queued"`, `queue_pos` 1 = prochaine, `progress` à 0). Réponse complète (PGN annoté en-têtes complets White/Black/Result/Date + coups critiques) via `analysis_status`. Second appel sur la même partie → `already_running`. `publish=True` publie sur l'UI web (`analysis_running: true` pendant le calcul, `analysis_queued: true` en file). Alerte « triche détectée » (`cheat_detected`) si partie/puzzle en cours — sauf analyse préexistante |
 | `analysis_status(game_id)` | Suivi de l'analyse asynchrone : `{status: queued/running/done/failed/none, progress, total, elapsed_s, queue_pos?}` ; `done` = réponse complète (pgn, evals, critical, published…) |
 | `analyze_pgn(pgn, depth)` | Analyse Stockfish d'un PGN externe (ex. exporté de lichess.org) |
+| `spectator_analysis(game_id)` | **Spectateurs uniquement** (fair-play) : évaluation Stockfish temps réel de la position courante d'une partie (`eval_white`, `eval`, `pv_san`/`pv_uci`, `depth`, `fen`) — calcul live (profondeur `LICHESS_MCP_LIVE_EVAL_DEPTH`, défaut 10) recalculé à chaque coup tant qu'un spectateur observe ; côté web, la **jauge d'évaluation temps réel** s'affiche pour les spectateurs dès qu'au moins un spectateur est présent (jamais transmise aux joueurs) |
 
 ## Installation
 

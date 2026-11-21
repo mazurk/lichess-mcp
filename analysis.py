@@ -292,3 +292,41 @@ def analyze_moves(moves: list[chess.Move], depth: int = 15,
         "critical": critical,
         "evals": evals,
     }
+
+
+def evaluate_position(board: chess.Board, depth: int = 10) -> dict:
+    """Évaluation Stockfish d'une position unique (issue #94 : jauge d'évaluation
+    temps réel pour les spectateurs).
+
+    Retourne `eval_white` (centipions, perspective blancs — convention du projet),
+    `eval` (texte, ex. "+1.50" / "-0.80" / "M3"), la variante principale
+    `pv_uci`/`pv_san` du camp au trait, la `depth` utilisée et le `fen`.
+    """
+    path = stockfish_path()
+    if not path:
+        raise ValueError(
+            "Stockfish n'est pas installé. Installez-le (apt install stockfish) "
+            "ou définissez LICHESS_MCP_STOCKFISH vers le binaire."
+        )
+    depth = max(1, min(int(depth), 30))
+    board = board.copy(stack=False)
+    with chess.engine.SimpleEngine.popen_uci(path) as engine:
+        engine.configure(engine_options(depth))
+        info = engine.analyse(board, chess.engine.Limit(depth=depth))
+        mover = board.turn
+        score_cp = _pov_score_cp(info, mover)  # point de vue du camp au trait
+        pv = info.get("pv") or []
+        pv_uci = [m.uci() for m in pv[:8]]
+        pv_san = _pv_to_san(board, pv, max_plies=8)
+    eval_white = score_cp if mover == chess.WHITE else -score_cp
+    text = _eval_str(eval_white)
+    if eval_white > 0 and not text.startswith(("M", "-")):
+        text = "+" + text
+    return {
+        "eval_white": eval_white,
+        "eval": text,
+        "pv_uci": pv_uci,
+        "pv_san": pv_san,
+        "depth": depth,
+        "fen": board.fen(),
+    }

@@ -18,6 +18,18 @@ PAGE_FUNCTIONS = [
 ]
 
 
+def test_live_eval_wired_in_web_and_server():
+    """Issue #94 : jauge temps réel spectateurs — live_eval câblé côté front
+    (spectator=1, rendu jauge) et outil MCP spectator_analysis côté serveur."""
+    assert "spectator=1" in APP_JS          # le spectateur web demande l'eval live
+    assert "state.live_eval" in APP_JS      # la jauge la consomme en direct
+    srv = (REPO / "server.py").read_text(encoding="utf-8")
+    assert "def spectator_analysis(" in srv
+    assert "def _maybe_live_eval(" in srv
+    # fair-play : live_eval renvoyée uniquement si spectator=1
+    assert '"live_eval": game.get("live_eval") if spectator else None' in srv
+
+
 def test_all_page_functions_defined():
     for fn in PAGE_FUNCTIONS:
         defined = (
