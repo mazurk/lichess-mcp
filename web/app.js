@@ -278,20 +278,27 @@ function renderEvalGauge() {
   if (!state) { gauge.style.display = "none"; return; }
   const analysis = state.analysis;
   const live = state.live_eval;  // issue #94 : eval temps réel (spectateurs uniquement)
-  const hasAnalysis = analysis && analysis.evals && analysis.evals.length;
-  const hasLive = live && typeof live.eval_white === "number";
-  if (!hasAnalysis && !hasLive) {
+  const liveEvals = state.live_evals || {};  // historique live par pli (spectateurs)
+  const hasAnalysis = !!(analysis && analysis.evals && analysis.evals.length);
+  const hasLive = !!(live && typeof live.eval_white === "number");
+  const hasHist = Object.keys(liveEvals).length > 0;
+  if (!hasAnalysis && !hasLive && !hasHist) {
     gauge.style.display = "none";
     return;
   }
   // k = nombre de coups joués dans la position affichée (live = tous les coups)
   const k = (viewPly === null || isLive()) ? state.moves.length : viewPly;
   let evalCp = null;
-  if ((viewPly === null || isLive()) && hasLive) {
-    // position courante : eval temps réel du spectateur (issue #94)
-    evalCp = live.eval_white;
-  } else if (hasAnalysis && k >= 1 && k <= analysis.evals.length) {
+  if (hasAnalysis && k >= 1 && k <= analysis.evals.length) {
+    // mode Analyse : UNIQUEMENT les données du PGN d'analyse — jamais le cache
+    // live (issue #94 retour : la barre du mode Analyse ne lit que l'analyse)
     evalCp = analysis.evals[k - 1].eval_white;
+  } else if (k >= 1 && liveEvals[String(k - 1)] !== undefined) {
+    // partie en cours, spectateur : éval live de la position passée (pli k-1)
+    evalCp = liveEvals[String(k - 1)];
+  } else if ((viewPly === null || isLive()) && hasLive) {
+    // position courante sans analyse publiée : eval temps réel
+    evalCp = live.eval_white;
   }
   const pct = evalToGaugePct(evalCp === null ? 0 : evalCp);
   if (pct === null) { gauge.style.display = "none"; return; }

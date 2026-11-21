@@ -28,6 +28,13 @@ def test_live_eval_wired_in_web_and_server():
     assert "def _maybe_live_eval(" in srv
     # fair-play : live_eval renvoyée uniquement si spectator=1
     assert '"live_eval": game.get("live_eval") if spectator else None' in srv
+    # issue #94 retour : snapshot atomique + historique live par pli
+    assert ".copy(stack=True)" in srv
+    assert '"live_evals"' in srv
+    # front : mode Analyse = PGN d'analyse UNIQUEMENT (jamais le cache live en
+    # priorité), puis historique live, puis eval live courante
+    assert "hasAnalysis && k >= 1" in APP_JS
+    assert "liveEvals[String(k - 1)]" in APP_JS
 
 
 def test_all_page_functions_defined():
